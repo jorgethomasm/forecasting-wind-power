@@ -1,0 +1,83 @@
+---
+title: "Windpark Silistea 1 (2011) - 25 MW"
+author: "Jorge A. Thomas"
+format: html
+jupyter: python3
+---
+
+# Wind Park Info
+
+**Energy Produced (2023):** 52 GWh [https://veronikiwind.ro/en/](https://veronikiwind.ro/en/)
+
+**Wind Turbines (WT):** 10 GE (2.5 MW)
+
+**Height of WT:** 100 m
+
+**Rotor Diameter:** 100 m
+
+**Power Output:** 25 MW
+
+"The park has 10 GE turbines of 2.5 MW each, turbines with a tower height of 100 meters and a rotor diameter of 100 meters. The 10 turbines are divided into two groups of 5 turbines; each group being interconnected through 7790m of underground power cables."
+
+"The electricity production is estimated based on hourly updated weather data (with a time resolution of 15 minutes), provided by external suppliers."
+
+Source: [https://veronikiwind.ro/en/silistea-wind-park/](https://veronikiwind.ro/en/silistea-wind-park/)
+
+This notebook is for data wrangling related to the Silistea dataset.
+
+
+```{python}
+#| label: load
+
+import os
+import duckdb
+import polars as pl
+
+folder_path = "./data/Silistea/raw/"
+csv_files = [csv_file[0:-4] for csv_file in os.listdir(folder_path)]
+
+
+connection = duckdb.connect()
+
+polars_dfs = {}
+for csv_file in csv_files:
+    polars_dfs[csv_file] = connection.execute(f"SELECT * FROM read_csv_auto('{folder_path}{csv_file}.csv')"
+    ).pl().with_columns(pl.col("timestamp").dt.replace_time_zone("UTC"))
+
+connection.close()
+
+# print(polars_dfs[csv_files[1]])
+
+
+# Create duckdb
+conn = duckdb.connect("./data/Silistea/Silistea_raw.duckdb")
+
+# Register each Polars DataFrame as a view before creating the table
+for table_name, polars_df in polars_dfs.items():
+    # Register the DataFrame as a temporary view
+    conn.register(f"temp_{table_name}", polars_df)
+    # Create permanent table from the view
+    conn.execute(f"CREATE TABLE {table_name} AS SELECT * FROM temp_{table_name}")
+
+conn.close()
+
+# def save_df_as_duckdb(
+#         self,
+#         df: pl.DataFrame,
+#         path: str = "./data/raw/eia_data.duckdb",
+#         table_name: str = "eia_data",
+#     ) -> None:
+#         """
+#         Save a Polars DataFrame with the requested EIA data to a DuckDB file.
+#         Ideal for large dynamic (updatable) dataset and quick data analysis.
+#         """
+#         query = f"CREATE TABLE {table_name} AS SELECT * FROM df"
+#         con = duckdb.connect(path)
+#         con.execute(query)
+#         con.close()
+
+#         return None
+
+
+```
+
