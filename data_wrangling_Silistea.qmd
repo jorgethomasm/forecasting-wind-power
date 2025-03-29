@@ -25,31 +25,32 @@ Source: [https://veronikiwind.ro/en/silistea-wind-park/](https://veronikiwind.ro
 
 This notebook is for data wrangling related to the Silistea dataset.
 
-
 ```{python}
 #| label: init
 #| eval: true
 import os
 import duckdb
 import polars as pl
+
 folder_path = "./data/Silistea/raw/"
+fnames = [fname for fname in os.listdir(folder_path)]
+fnames_noext = [os.path.splitext(fname)[0] for fname in fnames]
+table_names = fnames_noext
 ```
 
 ```{python}
 #| label: load SQL syntax
 #| eval: false
 
-csv_files = [csv_file[0:-4] for csv_file in os.listdir(folder_path)]
-
 connection = duckdb.connect()
 polars_dfs = {}
-for csv_file in csv_files:
-    polars_dfs[csv_file] = connection.execute(f"SELECT * FROM read_csv_auto('{folder_path}{csv_file}.csv')"
+for fname in fnames:
+    polars_dfs[fname] = connection.execute(f"SELECT * FROM read_csv_auto('{folder_path}{fname}.csv')"
     ).pl().with_columns(pl.col("timestamp").dt.replace_time_zone("UTC"))
 
 connection.close()
 
-print(polars_dfs[csv_files[1]])
+print(polars_dfs[fnames[1]])
 ```
 
 
@@ -75,26 +76,51 @@ conn.close()
 #| label: load Polars syntax
 #| eval: true
 
-csv_files = [csv_file for csv_file in os.listdir(folder_path)]
-list_of_dfs = [pl.read_csv(f"{folder_path}{csv_file}", try_parse_dates=True) for csv_file in csv_files]
+list_of_dfs = [pl.read_csv(f"{folder_path}{fname}", try_parse_dates=True, use_pyarrow=True) for fname in fnames]
 
-meteo = list_of_dfs[0]
-production = list_of_dfs[1]
-humidity = list_of_dfs[2]
+dfs = {}
+for table_name, df in zip(table_names, list_of_dfs):
+    dfs[table_name] = df  #.pl().with_columns(pl.col("timestamp").dt.replace_time_zone("UTC")) 
 
-
-
-print(meteo)
+# Extract each df into the global environment
+for table_name, df in dfs.items():
+    globals()[table_name] = df  #.pl().with_columns(pl.col("timestamp").dt.replace_time_zone("UTC"))
 
 ```
 
 
 ```{python}
-#| label: wrangling
+#| label: resampling
 
 meteo_15min = meteo.group_by_dynamic("timestamp", every="15m", closed="left").agg([pl.col(col).mean() for col in meteo.columns if col != "timestamp"])
-humidity_15min = humidity.upsample("timestamp", every="15m").fill_null(strategy="forward")
+relative_humidity_15min = relative_humidity.upsample("timestamp", every="15m").fill_null(strategy="forward")
 
-humidity.describe()
-production.describe()
+```
+
+
+```{python}
+#| label: joining
+
+meteo_all = meteo_15min.join(relative_humidity_15min, on="timestamp",how="left")
+silistea = meteo_all.join(production, on="timestamp", how="left")
+
+# Add dataset identifier
+# silistea = silistea.with_columns(
+#     pl.lit("train").alias("dataset"))
+
+# print(silistea.columns)
+```
+
+```{python}
+#| label: dataset id
+#| eval: true
+
+# Add dataset column and mark rows as test/train based on kWh values
+
+silistea = silistea.with_columns(
+        pl.when(pl.col('kWh').is_null())
+        .then("test")
+        .otherwise("train")
+        .alias('dataset')
+    )
 ```
