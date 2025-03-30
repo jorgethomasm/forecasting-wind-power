@@ -1,0 +1,166 @@
+---
+title: "Windpark Silistea 1 (2011) - 25 MW"
+author: "Jorge A. Thomas"
+format: html
+jupyter: python3
+---
+# Wind Park Info
+
+**Energy Produced (2023):** 52 GWh [https://veronikiwind.ro/en/](https://veronikiwind.ro/en/)
+
+**Wind Turbines (WT):** 10 GE (2.5 MW)
+
+**Height of WT:** 100 m
+
+**Rotor Diameter:** 100 m
+
+**Power Output:** 25 MW
+
+This notebook is for data wrangling related to the Silistea dataset.
+
+```{python}
+#| label: init
+#| eval: true
+import os
+import duckdb
+import polars as pl
+from pathlib import Path
+
+# Get project root directory (2 levels up from notebook location)
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+
+folder_path_raw = PROJECT_ROOT / "data" / "raw" / "Silistea"
+folder_path_interim = PROJECT_ROOT / "data" / "interim"
+folder_path_processed = PROJECT_ROOT / "data" / "processed"
+
+fnames = [fname for fname in os.listdir(folder_path_raw) if fname.endswith('.csv')]
+fnames_noext = [os.path.splitext(fname)[0] for fname in fnames]
+table_names = fnames_noext
+```
+
+```{python}
+#| label: load SQL syntax
+#| eval: false
+
+connection = duckdb.connect()
+polars_dfs = {}
+for table_name, fname in zip(table_names, fnames):
+    polars_dfs[table_name] = connection.execute(f"SELECT * FROM read_csv_auto('{folder_path_raw}\{fname}')"
+    ).pl().with_columns(pl.col("timestamp").dt.replace_time_zone("UTC"))
+
+connection.close()
+
+# print(polars_dfs[fnames[1]])
+```
+
+
+```{python}
+#| label: Create duckdb
+#| eval: false
+
+# Create duckdb
+conn = duckdb.connect(f"{folder_path_raw}\Silistea_raw.duckdb")
+
+# Register each Polars DataFrame as a view before creating the table
+for table_name, polars_df in polars_dfs.items():
+    # Register the DataFrame as a temporary view
+    conn.register(f"temp_{table_name}", polars_df)
+    # Create permanent table from the view
+    conn.execute(f"CREATE TABLE {table_name} AS SELECT * FROM temp_{table_name}")
+
+conn.close()
+```
+
+
+```{python}
+#| label: load Polars syntax
+#| eval: true
+
+list_of_dfs = [pl.read_csv(f"{folder_path_raw}\{fname}", try_parse_dates=True, use_pyarrow=True) for fname in fnames]
+
+dfs = {}
+for table_name, df in zip(table_names, list_of_dfs):
+    dfs[table_name] = df  #.pl().with_columns(pl.col("timestamp").dt.replace_time_zone("UTC")) 
+
+# Extract each df into the global environment
+for table_name, df in dfs.items():
+    globals()[table_name] = df  #.pl().with_columns(pl.col("timestamp").dt.replace_time_zone("UTC"))
+
+```
+
+
+```{python}
+#| label: resampling
+#| eval: true
+
+meteo_15min = meteo.group_by_dynamic("timestamp", every="15m", closed="left").agg([pl.col(col).mean() for col in meteo.columns if col != "timestamp"])
+relative_humidity_15min = relative_humidity.upsample("timestamp", every="15m").fill_null(strategy="forward")
+
+```
+
+
+```{python}
+#| label: joining
+#| eval: true
+
+meteo_all = meteo_15min.join(relative_humidity_15min, on="timestamp",how="left")
+silistea = meteo_all.join(production, on="timestamp", how="left")
+```
+
+```{python}
+#| label: saving 
+#| eval: true
+
+# Get metadata for filename
+first_ts = silistea["timestamp"].min().strftime("%Y%m%d")
+last_ts = silistea["timestamp"].max().strftime("%Y%m%d")
+freq = "15min"
+n_rows = len(silistea)
+
+# Additional metadata options
+null_pct = int(silistea["kWh"].null_count() / len(silistea) * 100)
+n_cols = len(silistea.columns)
+
+filename = f"Silistea_{freq}_{first_ts}_{last_ts}_n{n_rows}_cols{n_cols}_null{null_pct}pct.parquet"
+
+# Save processed dataset
+silistea.write_parquet(f"{folder_path_interim}\{filename}")
+
+# Print filename for verification
+print(f"Saved as: {filename}")
+
+```
+
+```{python}
+#| label: dataset id
+#| eval: false
+
+
+# silistea = silistea.with_columns(
+#     pl.when(pl.col('kWh').is_null())
+#     .then("test")    
+#     .otherwise("train")
+#     .alias('dataset'))
+
+# silistea = silistea.with_columns(pl.lit("train").alias("dataset"))
+
+# Get indices where kWh is null
+# null_indices = silistea.with_row_count("index").filter(pl.col("kWh").is_null()).get_column("index")
+
+
+# Print the indices
+# print(null_indices.to_list())
+
+# silistea = silistea.with_columns([
+#     pl.when(pl.arange(0, len(silistea)).is_in(null_indices))
+#     .then("test")
+#     .otherwise("train")
+#     .alias("dataset")
+# ])
+
+# # Verify the changes
+# print(silistea.filter(pl.col("dataset") == "test").select(["timestamp", "kWh", "dataset"]))
+
+# test_df = silistea.filter(pl.col("kWh").is_null())
+
+```
