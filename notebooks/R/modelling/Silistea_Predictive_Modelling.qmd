@@ -1,0 +1,599 @@
+---
+title: "Windpark Silistea 1 (2011) - 25 MW"
+subtitle: Feature Engineering
+author: "Jorge A. Thomas"
+date: "`r Sys.Date()`"
+format:    
+    html:
+      self-contained: true
+      code-fold: true
+      df-print: tibble
+      code-summary: "Show the code"
+      grid: 
+        margin-width: 350px
+execute: 
+  echo: fenced
+reference-location: margin
+citation-location: document
+---
+
+**Energy Produced (2023):** 52 GWh [https://veronikiwind.ro/en/](https://veronikiwind.ro/en/)
+
+**Wind Turbines (WT):** 10 GE (2.5 MW)
+
+**Height of WT:** 100 m
+
+**Rotor Diameter:** 100 m
+
+**Power Output:** 25 MW
+
+"The park has 10 GE turbines of 2.5 MW each, turbines with a tower height of 100 meters and a rotor diameter of 100 meters. The 10 turbines are divided into two groups of 5 turbines; each group being interconnected through 7790m of underground power cables."
+
+"The electricity production is estimated based on hourly updated weather data (with a time resolution of 15 minutes), provided by external suppliers."
+
+Source: [https://veronikiwind.ro/en/silistea-wind-park/](https://veronikiwind.ro/en/silistea-wind-park/)
+
+```{r}
+#| label: init
+#| message: false
+#| echo: false
+
+
+# ==================== Wind-Power-Production-Forecast ===================
+# Jan 2025
+# jorgethomasm@ieee.org
+# For: Ogre.ai
+
+
+# ========================== Load Dependencies ==========================
+
+# library("reticulate") # in case of needing my Python lib
+# library("here")
+
+# Add this at the start of your document
+library("here")
+library("arrow")
+
+library("tictoc")     # measure runtime
+library("tidyverse")  # ETL and EDA tools
+library("lubridate")
+library("kableExtra")
+library("plotly")
+
+
+library("tictoc")     # measure runtime
+
+
+library("tidymodels")
+tidymodels_prefer()
+library("doParallel")
+library("ranger") # rf lib
+
+source(here("src", "R", "utils", "jthomfuncs.r"))
+theme_set(jthomggtheme)
+```
+
+::: {#fig-intro layout-ncol="1"}
+![Source: Google Earth](./imgs/Silistea-1.png){width="100%"}
+
+Aerial view of the Silistea 1 windpark.
+:::
+
+# OBJECTIVES
+
+-   Predict the energy produced of the *Silistea 1* wind park for the first semester of 2024.
+
+-   To find a good generalisation of Silistea's power curve or *signature* in function of the given meteorological and engineered features.
+
+# PART 3: MANAGING DATA BUDGET
+
+- Here I split *test* and *train* datasets. I'll perform a quick, manual data cleaning based on the previous scatter plot.
+
+- I'll generate 10-folds for cross-validation and 80 Bootstraps from the **training dataset** for test error assessment. Hence, *subtest* sets will be derived from the training split, avoiding data leakage.
+
+```{r}
+#| label: fig-data_budget
+#| fig-width: 6
+#| fig-height: 6
+#| fig-cap: 'Data looking cleaner.'
+#| fig-cap-location: margin
+#| warning: false
+
+
+# TODO: load processed data
+
+
+
+
+
+# ================= Train / Test Splits ===================
+
+silistea_train <- silistea_redux |> filter(dataset == "train")
+silistea_test <- silistea_redux |> filter(dataset == "test") # only for submission
+
+
+# ============== Manual cleaning train split  =============
+
+# (Based on comments above)
+
+# Rare Wind Speeds 
+idx_remove_1 <- which(silistea_train$wind_speed_avg > 14)
+
+# Rare amount of production with low wind speeds
+idx_remove_2 <- which(silistea_train$wind_speed_avg < 5 & silistea_train$kW > 17500)
+idx_remove_3 <- which(silistea_train$wind_speed_avg < 4 & silistea_train$kW > 11000)
+idx_remove_4 <- which(silistea_train$wind_speed_avg < 2 & silistea_train$kW > 5000)
+
+# Maintenance or down-time?
+idx_remove_5 <- which(silistea_train$wind_speed_avg > 9.2 & silistea_train$kW < 6000)
+idx_remove_6 <- which(silistea_train$wind_speed_avg > 6 & silistea_train$kW == 0)
+
+idx_remove <- c(idx_remove_1, idx_remove_2, idx_remove_3, idx_remove_4, idx_remove_5, idx_remove_6)
+
+silistea_train <- silistea_train[-idx_remove, ]
+
+
+# =========== Visualise cleaner training data =============
+
+silistea_train |> 
+  mutate(month = as.factor(month(timestamp))) |> 
+
+  ggplot(aes(x = wind_speed_avg, y = kW))  +
+  scale_x_continuous(breaks = seq(0, 30, 2), limits = c(0, 26)) +
+  scale_y_continuous(breaks = seq(0, 30000, 5000), limits = c(0, 26000)) + 
+  geom_point(aes(colour = month), alpha = 0.1) +
+  # geom_smooth(method = "lm", formula =  y ~ splines::bs(x, 3), colour = "black", size = 1, alpha = 0.5) +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), colour = "black", alpha = 0.5) +  
+  labs(x = "Wind Speed [m/s]", y = "Output\n[kW]" ) 
+
+
+# Interesting values:
+
+max_power <- max(silistea_train$kW) # historical maximum
+
+cut_in_power <- median(silistea_train$kW[which(silistea_train$wind_speed_avg < 3)])
+# mean(silistea_train$kW[which(silistea_train$wind_speed_avg < 2.5)])
+
+cut_out_power <- median(silistea_train$kW[which(silistea_train$wind_speed_avg > 11.4)])
+# mean(silistea_train$kW[which(silistea_train$wind_speed_avg > 11)])
+
+
+# ============= 10-folds CV ============
+
+library(embed)
+library(stacks)
+
+# For hyper-parameter tuning:
+set.seed(1982)
+silistea_folds <- vfold_cv(silistea_train, v = 10, repeats = 1, strata = kW) 
+
+
+# ============= 80 Bootstraps ============
+
+# For assessment of test error:
+set.seed(1982)
+silistea_boots <- bootstraps(silistea_train, times = 80, strata = kW)
+
+# ============= Clean global Env. ============
+
+rm(silistea_mete_raw)
+rm(silistea_prod_raw)
+rm(silistea_all)
+rm(silistea_mete_agg)
+rm(wind_speeds)
+rm(wind_speeds_u)
+rm(i)
+rm(idx_remove_1)
+rm(idx_remove_2)
+rm(idx_remove_3)
+rm(idx_remove_4)
+rm(idx_remove_5)
+rm(idx_remove_6)
+```
+
+# PART 4: MODELLING
+
+## 0. Naive reference model 
+
+- This model serves me to compare train RMSE with more advanced solutions.
+
+- Fit a second order Polynomial using only `wind_speed_avg` as predictor.
+
+- Everything below 3 m/s yields 0 (zero) power.
+
+- Every prediction above the maximum historically seen (24692 kW) will be capped at that Max.
+
+- This is a better equivalent than using the *theoretical* assessment for generation planning.
+
+```{r}
+#| label: fig-naive_model
+#| message: false
+#| warning: false
+#| column: body
+#| fig-width: 6
+#| fig-height: 6
+#| fig-cap: "Simplest model."
+#| fig-cap-location: margin
+#| fig-subcap:
+#|   - "Scatter Plot"
+#|   - "Actual Train Vs. Predicted Train"
+#| layout-ncol: 2
+
+
+# ======== Specify recipe ======== 
+
+rec_lm <- 
+  recipe(kW ~ wind_speed_avg, data = silistea_train) |> 
+  step_poly(wind_speed_avg, degree = 2) #|> 
+  #step_YeoJohnson(all_numeric_predictors()) 
+
+
+# ======== Specify model ========
+
+model_lm <- linear_reg() |> set_engine("lm")
+
+
+# ======== Create workflow =======
+
+wf_lm <- workflow() |> 
+  add_recipe(rec_lm) |> 
+  add_model(model_lm)
+
+# ======== Train or fit model =======
+
+fitted_lm <- wf_lm |> 
+  fit(silistea_train)
+
+# Estimate test error 
+
+
+# tic("lm fit bootstaps")
+# lm_boot_fit <- 
+#   fitted_lm |> 
+#   fit_resamples(resamples = naive_boots)
+#   
+# lm_boot_fit |> collect_metrics(summarize = TRUE)
+# 
+# toc()
+
+
+# ======= Make prediction of TRAIN data =========
+
+# Apply 2nd Order polynomial:
+pred_naive_train <- fitted_lm |> 
+  predict(new_data = silistea_train)  |> 
+  bind_cols(silistea_train)
+
+# Apply decision rules
+pred_naive_train$.pred[which(pred_naive_train$wind_speed_avg < 3)] <- 0
+pred_naive_train$.pred[which(pred_naive_train$.pred > max_power)] <- max_power
+
+# ======= Train error assessment =========
+
+training_rmse_naive <- calc_rmse(pred_naive_train$kW, pred_naive_train$.pred)
+# training RMSE: 3677.77301570902 KW
+
+
+
+# ======= Plot training data and fitted model ==========
+
+pred_naive_train |> 
+  mutate(month = as.factor(month(timestamp))) |> 
+  
+  ggplot(aes(x = wind_speed_avg)) +
+  scale_x_continuous(breaks = seq(0, 30, 2), limits = c(0, 26)) +
+  scale_y_continuous(breaks = seq(0, 30000, 5000), limits = c(0, 26000)) + 
+  geom_point(aes(y = kW, colour = month), alpha = 0.1) +
+  geom_line(aes(y = .pred), colour = "black", alpha = 0.5) +
+  labs(title = "Naive model (reference)", x = "Wind Speed [m/s]", y = "Output\n[kW]") 
+
+
+# ======= Plot Actual Train Vs. Pred. Train ==========
+
+pred_naive_train |> 
+  ggplot(aes(x = kW, y = .pred)) +
+  geom_point(alpha = 0.1) +
+  labs(title = "Predict on training", x = "Actual", y = "Predicted") 
+
+```
+- Outliers deviate the regression line.
+
+- Training RMSE: 3677.773 kW. It's rubbish but a reference. For sure it will not overfit :)
+
+### Predict test and write results
+
+```{r}
+#| label: naive_pred
+
+# ======= Make prediction of TEST data =========
+
+# Apply 2nd Order polynomial:
+pred_naive_test <- fitted_lm |> 
+  predict(new_data = silistea_test)  |> 
+  bind_cols(silistea_test)
+
+# Apply decision rules
+pred_naive_test$.pred[which(pred_naive_test$wind_speed_avg < 3)] <- 0
+pred_naive_test$.pred[which(pred_naive_test$.pred > max_power)] <- max_power
+
+res_naive_test <- pred_naive_test |> 
+  select(timestamp, kW, .pred) |> 
+  mutate(kWh_pred = .pred * delta_t) |> # POWER TO ENERGY!
+  select(-c(kW, .pred,))
+
+# write_csv(res_naive_test, "./data/res/result_naive.csv")
+
+```
+
+## 1. Random Forest
+
+- RF is for me a quick starter with less tuning overhead and runtime.
+
+- Let's test the explanatory power of all 14 features.
+
+
+```{r}
+#| label: fig-random_forest
+#| message: false
+#| warning: false
+#| column: body
+#| fig-width: 6
+#| fig-height: 6
+#| fig-cap: 'Better or too high variance?'
+#| fig-subcap:
+#|   - "Scatter plot: Black dots are predictions."
+#|   - "Actual Train Vs. Predicted Train"
+#| layout-ncol: 2
+
+# install.packages("ranger")
+
+# ======== Specify recipe ======== 
+
+# Preprocessing steps
+
+rf_recipe <-
+  recipe(formula = kW ~., data = silistea_train) |> 
+  
+  # Time features expansion (for future consideration)
+  # step_date(timestamp, features = c("year", "month", "day", "dow")) |> 
+  # step_time(timestamp, features = "hour") |> 
+  
+  # Ignore following columns:
+  update_role(timestamp, new_role = "Id variable") |>
+  update_role(dataset, new_role = "splitting variable") |>
+  update_role(kWh, new_role = "Energy Values") |> # using kW as target
+
+  step_YeoJohnson(all_numeric_predictors()) |>
+  step_zv(all_predictors()) |> 
+  step_normalize(all_numeric_predictors()) # mean = 0, sd = 1
+
+# ======== Preview recipe / preprocessing ========
+
+# rf_recipe |>
+#   prep() |> 
+#   bake(new_data = NULL) |> 
+#   glimpse()
+
+
+# ======== Specify model ========
+
+rf_spec <-
+  rand_forest(mtry = tune(), min_n = tune(), trees = 1000) |> 
+  set_mode("regression") |> 
+  set_engine("ranger", importance = "impurity", oob.error = TRUE) # enable vip?
+
+# ======== Create workflow =======
+
+rf_wf <-
+  workflow() |> 
+  add_recipe(rf_recipe) |> 
+  add_model(rf_spec)
+
+# ======== Model Tuning =======
+
+# n_cores <- detectCores()
+# cluster <- makeCluster(n_cores - 10)
+# 
+# 
+# tic("Random Forest Tuning")
+# set.seed(1982)
+# doParallel::registerDoParallel(cluster)
+# 
+# rf_tune <- tune_grid(rf_wf,
+#                      resamples = silistea_folds, # 10 Folds
+#                      grid = 11)
+# 
+# toc()
+# ~35 minutes
+
+# write_rds(rf_tune, file = "./models/rf_10-CV_tuning_res.rds")
+
+rf_tune <- readRDS("./models/rf_10-CV_tuning_res.rds")
+
+# Explore Results
+
+show_best(rf_tune, metric = "rmse")
+
+# Set best parameters
+tuned_rf <- rf_wf |> 
+  finalize_workflow(select_best(rf_tune, metric = "rmse"))
+
+tuned_rf
+
+# write_rds(tuned_rf, file = "./models/tuned_rf_oob.rds")
+
+# ======== Load tuned model =======
+
+# tuned_rf <- readRDS("./models/tuned_rf_oob.rds")
+
+
+# =========== Estimate Test error ============
+
+# tic("test_rf")
+# 
+# Train and test 300 times (too slow!)
+# rf_boot_fit <- 
+#   final_rf |> 
+#   fit_resamples(resamples = silistea_boots)
+# 
+# toc()  
+# 
+# rf_boot_fit |> collect_metrics(summarize = TRUE)
+
+# Enough with OOB error estimation (set on engine)
+
+
+# =========== Train tuned model ============
+
+# Take best (tuned) model and train with full training set
+
+# fitted_rf <- tuned_rf |>
+#   fit(silistea_train)
+# 
+# write_rds(fitted_rf, file = "./models/fitted_rf_oob.rds")
+
+
+# ======= Make prediction of TRAIN data =========
+
+fitted_rf <- readRDS("./models/fitted_rf_oob.rds")
+
+pred_rf_train <- 
+  predict(fitted_rf, silistea_train) |> 
+  bind_cols(silistea_train)
+
+# =======  OOB error =========
+
+oob_rmse_error <- sqrt(fitted_rf$fit$fit$fit$prediction.error)
+
+
+# ======= Train error assessment =========
+
+training_rmse_rf <- calc_rmse(pred_rf_train$kW, pred_rf_train$.pred)
+# training RMSE: 664.845 kW
+# training RMSE: 790.06 kW
+
+
+# ======= Plot training data and fitted model ==========
+
+pred_rf_train |> 
+  mutate(month = as.factor(month(timestamp))) |> 
+  
+  ggplot(aes(x = wind_speed_avg)) +
+  scale_x_continuous(breaks = seq(0, 30, 2), limits = c(0, 26)) +
+  scale_y_continuous(breaks = seq(0, 30000, 5000), limits = c(0, 26000)) + 
+  geom_point(aes(y = kW, colour = month), alpha = 0.1) +
+  geom_point(aes(y = .pred), colour = "black", alpha = 0.2) +
+  labs(title = "RF model", x = "Wind Speed [m/s]", y = "Output\n[kW]") 
+
+
+# ======= Plot Actual Train Vs. Pred. Train ==========
+
+pred_rf_train |> 
+  ggplot(aes(x = kW, y = .pred)) +
+  geom_point(alpha = 0.1) +
+  labs(title = "Predict on Training", x = "Actual", y = "Predicted") 
+
+```
+
+- Tuned parameters - trial 1 (grid = 9): 
+
+  - How many features considered per decision point => mtry =  8 features
+  
+  - mean sample leaf => min_n = 6 (first try with grid = 9)
+  
+  - 10-CV RMSE: 1875.352 kW for this "optimal" parametrised model.
+  
+  - Training RMSE: 790.06 kW
+
+- Tuned parameters - trial 2 (OOB error = TRUE; grid = 11): 
+  
+  - mean sample leaf => min_n = 2
+  
+  - 10-CV RMSE: 1837.022 kW for this "optimal" parametrised model.
+  
+  - Training RMSE: 664.845 kW
+  
+  - OOB-RMSE: 1773.0167 kW 
+  
+- Bootstrapping for test error estimation with 100 models was taking too long. Use OOB instead.
+
+
+### Feature Importance
+
+```{r}
+#| label: fig-vip
+#| fig-width: 6
+#| fig-height: 6
+#| fig-cap: 'Feature Importance. (RF)'
+#| fig-cap-location: margin
+#| warning: false
+
+
+# Get the variable importance
+var_importance <- as.data.frame(fitted_rf$fit$fit$fit$variable.importance)
+names(var_importance) <- c("Importance")
+var_importance$Feature <- rownames(var_importance)
+rownames(var_importance) <- NULL
+
+ggplot(var_importance, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "seagreen", alpha = 0.5) +
+  coord_flip() +
+  labs(x = "Feature", y = "Importance") 
+
+```
+
+### Predict test and write results
+
+```{r}
+#| label: rf_pred
+
+# ======= Make prediction of TEST data =========
+
+pred_rf_test <- fitted_rf |> 
+  predict(new_data = silistea_test)  |> 
+  bind_cols(silistea_test)
+
+res_rf_test <- pred_rf_test |> 
+  select(timestamp, kW, .pred) |> 
+  mutate(kWh_pred = .pred * delta_t) |> # POWER [kW] TO ENERGY [kWH] !!!
+  select(-c(kW, .pred,))
+
+# write_csv(res_rf_test, "./data/res/result_rf_grid_11.csv")
+
+```
+
+- If the model is *overfitting*, **min_n can be set higher**.
+
+- The model wasn't able to output zeros (0 kW). **A decision rule or other model at very low wind speeds, e.g. < 2 m/s will reduce error!**
+
+# PART 5: MY COMMENTS
+
+## Ideas and further development
+
+1. Having the Power Curve and technical specification of the wind turbines (WT), it is useful to compare the error between the *theoretical* energy yield and the *real* one.
+
+2. Forecasting per WT, with individual meteorological data (large farms) and properly labelling states like *down-times*, *maintenance* and *de-rated* generation. There should be an open way of accessing the *preventive maintenance* schedules from the clients.
+
+3. Previous point enables the possibility of calculating the stochastic state transition matrix of WTs, assessing the risk of the wind park and providing large value, not only for the client but for our forecasts.
+
+4. Expanding time-related features, cosine transformation (season capture) and acquiring on-site *relative humidity*, therefore adding the *humid air density* feature could help to increase accuracy.
+
+5. Transforming the target, trying to make it more Gaussian-like, usually improves performance in regression setups, especially with classical statistical models.
+
+6. Tuning and fitting boosted trees (XGBoost) regression with the additional features. However, this means minimum ~4 hours searching quasi-optimal hyper-parameters, plus extra electricity bill :).
+
+7. Having more training data (~5 years), tuning and fitting an LSTM deep neural network with the exogenous predictors in PyTorch is interesting. Also, exploring PyTorch's Temporal Fusion Transformer (tft).
+
+8. Finally, properly stacking models will increase accuracy and will pave the way towards a more informative probabilistic forecasting.
+
+
+As always, it was fun! I'll keep expanding Feats. on my free time.
+
+Thanks!
+
+Jorge 
+
+
+
+
+
