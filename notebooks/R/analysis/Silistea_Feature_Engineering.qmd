@@ -296,7 +296,7 @@ ggplot(data = data.frame(windspeeds = t(wind_speeds[1,]),
 for (i in 1:nrow(wind_speeds)) {
   
   wind_speeds$wind_speed_150m[i] <- spline(c(10, 50, 100, 150, 200), wind_speeds[i,], xout = 150)$y
-  
+
 }
 
  # Add new Feat. to DF
@@ -345,21 +345,21 @@ silistea_all <- silistea_all |>
 
 # arrow::write_parquet(silistea_all, here("data", "interim", "Silistea_15min_20220101_20240630_n87457_cols40_All_Feats.parquet"))
 
+```
 
-# Drop
+## Start dropping vars
 
-silistea_all <- silistea_all |> 
-  select(-c(wind_speed_10m, wind_speed_50m, wind_speed_100m, wind_speed_150m, wind_speed_200m))
+I'll work with the Avg. Wind Speed.
 
+```{r}
+#| label: Start Reduction
 
-silistea_all <- silistea_all |> 
-  select(-c(wind_speed_u_10m, wind_speed_u_50m, wind_speed_u_100m, wind_speed_u_150m, wind_speed_u_200m))
-
+silistea_redux <- silistea_all |> 
+  select(-c(wind_speed_10m, wind_speed_50m, wind_speed_100m, wind_speed_150m, wind_speed_200m, wind_speed_u_10m, wind_speed_u_50m, wind_speed_u_100m, wind_speed_u_150m,wind_speed_u_200m))
 
 ```
 
-
-## Searching for collinearities and simple correlations
+## Searching for collinearities
 
 ```{r}
 #| label: fig-num-corr
@@ -369,12 +369,11 @@ silistea_all <- silistea_all |>
 #| warning: false
 #| message: false
 
-silistea_all |>
+silistea_redux |>
   filter(dataset == "train") |>
-  select(-c(timestamp, dataset, , kWh)) |>
+  select(-c(timestamp, dataset, kWh)) |>
   cor(method = "pearson") |>
-  corrplot(type = "lower", method = "circle", insig = 'blank', order = "hclust", diag = TRUE,
-  tl.col="black", tl.cex = 0.8, addCoef.col = 'black', number.cex = 0.6)
+  corrplot(type = "lower", method = "circle", insig = 'blank', order = "hclust", diag = TRUE, tl.col="black", tl.cex = 0.8, addCoef.col = 'black', number.cex = 0.6)
 
 ```
 
@@ -397,8 +396,6 @@ silistea_all |>
 #|   - "wind_speed sample per height."
 #|   - "wind_speed_u sample per height."
 #| layout-ncol: 2
-
-silistea_redux <- silistea_all
 
 # Remove rubbish Feats.
 
@@ -541,6 +538,14 @@ silistea_redux |>
   labs(x = "Wind Speed [m/s]", y = "Output\n[kW]" ) +    
   theme(axis.title.y = element_blank(), legend.position = "right")
 ```
+
+```{r}
+#| label: Save Processed data
+
+arrow::write_parquet(silistea_redux, here("data", "processed", "Silistea_15min_20220101_20240630_n87457_cols13_redux_Feats.parquet"))
+
+```
+
 
 - (a) The Scatter plot shows the combined effect of the 10 wind turbines and the windiest months.
 
