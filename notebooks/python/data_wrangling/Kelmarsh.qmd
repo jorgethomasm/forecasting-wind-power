@@ -16,6 +16,8 @@ jupyter: python3
 
 This notebook is for data wrangling related to the Kelmarsh dataset.
 
+https://zenodo.org/records/8252025
+
 ```{python}
 #| label: init
 #| eval: true
@@ -41,17 +43,139 @@ fname_signal_map = "Kelmarsh_WT_dataSignalMapping.csv"  # Lookup
 fname_wt_attr = "Kelmarsh_WT_static.csv"                # Lookup
 fname_status_pmu = "Status_Kelmarsh_PMU_2016-01-09_-_2023-01-01_234.csv"
 fname_status_grid_meter = "Status_Kelmarsh_Grid_Meter_2016-01-01_-_2023-01-01_19978.csv"
-
-#fnames_noext = [os.path.splitext(fname)[0] for fname in fnames]
-#table_names = fnames_noext
 ```
+
+## Read and Write Lookup tables
+
+```{python}
+
+wt_attributes_lut = pl.read_csv(folder_path_raw / fname_wt_attr)
+wt_attributes_lut.write_parquet(f"{folder_path_interim}/{"Kelmarsh_LUT_turbines_attributes.parquet"}")
+
+signal_map_lut = pl.read_csv(folder_path_raw / fname_signal_map)
+signal_map_lut.write_parquet(f"{folder_path_interim}/{"Kelmarsh_LUT_signal_map.parquet"}")
+
+```
+
+## Read Events and Grid Status
+
+Information for reliability? 
+
+```{python}
+
+msgs_status = pl.read_csv(folder_path_raw / fname_status_pmu, comment_prefix="#")
+
+msgs_status = msgs_status.with_columns(
+    pl.col("Timestamp start").str.strptime(pl.Datetime, "%Y-%m-%d %H:%M:%S", strict=False).dt.replace_time_zone("UTC"),
+    pl.col("Timestamp end").str.strptime(pl.Datetime, "%Y-%m-%d %H:%M:%S", strict=False).dt.replace_time_zone("UTC")    
+    ).drop("Duration")
+
+msgs_status = msgs_status.with_columns(
+    (pl.col("Timestamp end") - pl.col("Timestamp start")).alias("Duration")
+    )
+
+msgs_status.write_parquet(f"{folder_path_interim}{"/Kelmarsh_status_pmu.parquet"}")
+
+
+grid_status = pl.read_csv(folder_path_raw / fname_status_grid_meter, comment_prefix="#").with_columns(
+    pl.col("Timestamp start").str.strptime(pl.Datetime, "%Y-%m-%d %H:%M:%S", strict=False).dt.replace_time_zone("UTC"),
+    pl.col("Timestamp end").str.strptime(pl.Datetime, "%Y-%m-%d %H:%M:%S", strict=False).dt.replace_time_zone("UTC")    
+    ).drop("Duration")
+
+grid_status = grid_status.with_columns(
+    (pl.col("Timestamp end") - pl.col("Timestamp start")).alias("Duration")
+    )
+
+grid_status.write_parquet(f"{folder_path_interim}{"/Kelmarsh_status_grid_meter.parquet"}")
+
+```
+
+## Status per Wind Turbine
+
+```{python}
+
+turbine_status_list_2017_2021 = [
+    pl.read_csv(f"{folder_path_raw}/{fname}", 
+    try_parse_dates=False, 
+    comment_prefix="#",      
+    # null_values="NaN", 
+    # use_pyarrow=True,  
+    ignore_errors=True).with_columns(
+        pl.lit(fname).alias("wt"),
+        pl.col("Timestamp start").str.strptime(pl.Datetime, format="%Y-%m-%d %H:%M:%S", strict=False).dt.replace_time_zone("UTC"),        
+        pl.col("Timestamp end").str.strptime(pl.Datetime, "%Y-%m-%d %H:%M:%S", strict=False).dt.replace_time_zone("UTC")        
+        ).drop("Duration") 
+        for fname in fnames_status if fname.find("2022") == -1]
+
+turbine_status_2017_2021 = pl.concat(turbine_status_list_2017_2021)
+
+turbine_status_list_2022_2023 = [
+    pl.read_csv(f"{folder_path_raw}/{fname}", 
+    try_parse_dates=False, 
+    comment_prefix="#",      
+    # null_values="NaN", 
+    # use_pyarrow=True,  
+    ignore_errors=True).with_columns(
+        pl.lit(fname).alias("wt"),
+        pl.col("Timestamp start").str.strptime(pl.Datetime, format="%Y-%m-%d %H:%M:%S", strict=False).dt.replace_time_zone("UTC"),        
+        pl.col("Timestamp end").str.strptime(pl.Datetime, "%Y-%m-%d %H:%M:%S", strict=False).dt.replace_time_zone("UTC")        
+        ).drop("Duration") 
+        for fname in fnames_status if fname.find("2022") != -1 or fname.find("2023") != -1]
+
+turbine_status_2022_2023 = pl.concat(turbine_status_list_2022_2023)
+
+turbine_status = pl.concat([turbine_status_2017_2021, turbine_status_2022_2023], how="diagonal")
+
+
+```
+
+## Concatenate statuses
+
+```{python}
+
+turbine_status = turbine_status.with_columns(
+    (pl.col("Timestamp end") - pl.col("Timestamp start")).alias("Duration")
+)
+
+# Id turbines 
+turbine_status = turbine_status.with_columns([
+    pl.when(pl.col("wt").str.contains("_1_"))
+    .then(pl.lit("T01"))
+    .when(pl.col("wt").str.contains("_2_"))
+    .then(pl.lit("T02"))
+    .when(pl.col("wt").str.contains("_3_"))
+    .then(pl.lit("T03"))
+    .when(pl.col("wt").str.contains("_4_"))
+    .then(pl.lit("T04"))
+    .when(pl.col("wt").str.contains("_5_"))
+    .then(pl.lit("T05"))
+    .when(pl.col("wt").str.contains("_6_"))
+    .then(pl.lit("T06"))
+    .otherwise(pl.col("wt"))
+    .alias("wt")
+    ])
+
+
+# Get metadata for filename
+first_ts = turbine_status["Timestamp start"].min().strftime("%Y%m%d")
+last_ts = turbine_status["Timestamp end"].max().strftime("%Y%m%d")
+n_rows = len(turbine_status)
+
+# Additional metadata options
+n_cols = len(turbine_status.columns)
+
+filename = f"Kelmarsh_Turbines_Status_{first_ts}_{last_ts}_n{n_rows}_cols{n_cols}.parquet"
+
+turbine_status.write_parquet(f"{folder_path_interim}/{filename}")
+```
+
 
 ## Wind Turbines Data
 
 After errors and exploration, data frames from 2022 and 2023 have more columnas (about 4) than previous one.
 This means, read data and concatenate separatelly.  
 
-### Read 2017 - 2021 Trubine data
+### Read 2017 - 2021 Turbine data
 
 ```{python}
 #| label: wtdata schema2017-2021
@@ -76,7 +200,7 @@ turbine_data_2017_2021 = pl.concat(turbine_data_list_2017_2021)
 ```
 
 
-### Read 2022 - 2023 Trubine data
+### Read 2022 - 2023 Turbine data
 
 ```{python}
 #| label: wtdata schema2022-2023
@@ -102,27 +226,59 @@ turbine_data_list_2022_2023 = [
 turbine_data_2022_2023 = pl.concat(turbine_data_list_2022_2023)
 ```
 
-....concatenate all turbine data
+....concatenate all turbine data and save .parquet file
 
 ```{python}
 #| label: one df for wt data
 
-# # First, find the extra columns
-# cols_2022_2023 = set(turbine_data_2022_2023.columns)
-# cols_2017_2021 = set(turbine_data_2017_2021.columns)
-# missing_cols = cols_2022_2023 - cols_2017_2021
-
-# # Add missing columns to turbine_data_2017_2021 with NaN values
-# turbine_data_2017_2021 = turbine_data_2017_2021.with_columns([
-#     pl.lit(None).cast(pl.Float64).alias(col) for col in missing_cols
-# ])
-
 turbine_data = pl.concat([turbine_data_2017_2021, turbine_data_2022_2023], how="diagonal")
 
+turbine_data = turbine_data.rename({"# Date and time": "timestamp"})
 
+# Id turbines 
+turbine_data = turbine_data.with_columns([
+    pl.when(pl.col("wt").str.contains("_1_"))
+    .then(pl.lit("T01"))
+    .when(pl.col("wt").str.contains("_2_"))
+    .then(pl.lit("T02"))
+    .when(pl.col("wt").str.contains("_3_"))
+    .then(pl.lit("T03"))
+    .when(pl.col("wt").str.contains("_4_"))
+    .then(pl.lit("T04"))
+    .when(pl.col("wt").str.contains("_5_"))
+    .then(pl.lit("T05"))
+    .when(pl.col("wt").str.contains("_6_"))
+    .then(pl.lit("T06"))
+    .otherwise(pl.col("wt"))
+    .alias("wt")
+    ])
+
+turbine_data = turbine_data.with_columns([
+    pl.col("timestamp").cast(pl.Datetime).dt.replace_time_zone("UTC").alias("timestamp")
+    ])
 
 
 ```
+
+Save .parquet
+
+```{python}
+
+# Get metadata for filename
+first_ts = turbine_data["timestamp"].min().strftime("%Y%m%d")
+last_ts = turbine_data["timestamp"].max().strftime("%Y%m%d")
+freq = "10min"
+n_rows = len(turbine_data)
+
+# Additional metadata options
+n_cols = len(turbine_data.columns)
+
+filename = f"Kelmarsh_Turbines_Data_{freq}_{first_ts}_{last_ts}_n{n_rows}_cols{n_cols}.parquet"
+
+turbine_data.write_parquet(f"{folder_path_interim}\{filename}")
+
+```
+
 
 ```{python}
 #| label: resampling
