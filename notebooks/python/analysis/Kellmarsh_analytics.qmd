@@ -93,6 +93,7 @@ fo_yearly = (
                 pl.col("Timestamp start").dt.year().alias("Year"))
     .agg(
         pl.len().alias("Total Forced Outages (IEC)"),
+        pl.sum("TTF").alias("Total TTF"),        
         pl.sum("TTR").alias("Total TTR"),
         pl.mean("TTR").alias("MTTR"),
         pl.mean("TTF").alias("MTTF")                
@@ -103,7 +104,7 @@ fo_yearly = (
         (pl.col("MTTR").dt.total_seconds()/3_600 + pl.col("MTTF").dt.total_seconds()/3_600).alias("MTBF"),
         #(pl.col("MTTR").dt.total_hours() + pl.col("MTTF").dt.total_hours()).alias("MTBF hours"),
         #(1/pl.col("MTTF").dt.total_hours()).alias("FOR hours"),
-        (1/(pl.col("MTTF").dt.total_seconds()/3_600)).alias("FOR")
+        (1/(pl.col("MTTF").dt.total_seconds()/3_600)).alias("Failure Rate")
         )
     )
 
