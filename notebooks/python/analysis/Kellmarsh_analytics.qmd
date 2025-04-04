@@ -19,7 +19,6 @@ Infor available here:
 #| eval: true
 #| echo: false
 
-import os
 from pathlib import Path
 import duckdb
 import polars as pl
@@ -40,19 +39,32 @@ wtstatus = pl.read_parquet(f"{folder_path_interim}/Kelmarsh_Turbines_Status_2016
 duckdb.sql("DESCRIBE wtstatus").show()
 ```
 
+Filter Stop
+
+```{python}
+
+stop = pl.sql(
+    """
+    SELECT * EXCLUDE ("Custom contract category")    
+    FROM wtstatus
+    WHERE "Status" = 'Stop'
+    """).collect()
+
+```
+
 Filter Forced Outages
 
 ```{python}
 
 # Aggregate tables using SQL syntax
-fo_all = pl.sql(
+failures_all = pl.sql(
     """
-    SELECT * EXCLUDE ("Custom contract category")    
-    FROM wtstatus
-    WHERE "IEC category" = 'Forced outage'
+    SELECT * 
+    FROM stop
+    WHERE "IEC category" = 'Forced outage' 
     """).collect()
 
-fo_all.describe
+failures_all.describe
 ```
 
 Add Time Between Failure (TBF) and Time To Failure (TTF)
@@ -60,15 +72,32 @@ Add Time Between Failure (TBF) and Time To Failure (TTF)
 ```{python}
 
 # TTF
-fo_rep = fo_all.with_columns(
+failures = failures_all.with_columns(
     (pl.col("Timestamp start").shift(-1) - pl.col("Timestamp end")).shift(1).alias("TTF")    
     ).rename({"Duration":"TTR"})
 
-fo_norep = fo_rep.filter(pl.col("TTF") > pl.duration(seconds=0))
+failures = fo_rep.with_columns(
+    pl.when(pl.col("TTF") < 0)
+    .then(None)
+    .otherwise(pl.col("TTF"))
+    .alias("TTF")
+)
 
-fo = fo_norep.with_columns(pl.col("Timestamp start").diff().alias("TBF"))
 
-fo.describe
+
+# neg = pl.sql(
+#     """ 
+#     SELECT TTF 
+#     FROM fo_no_neg
+#     WHERE "TTF" < 0
+#     """
+# ).collect()
+
+
+
+# fo = fo_norep.with_columns(pl.col("Timestamp start").diff().alias("TBF"))
+
+# fo.describe
 ```
 
 ```{python}
@@ -88,8 +117,8 @@ fo.describe
 ```{python}
 #| label: forced outages
 
-fo_yearly = (
-    fo.group_by("wt",
+failures_yearly = (
+    failures.group_by("wt",
                 pl.col("Timestamp start").dt.year().alias("Year"))
     .agg(
         pl.len().alias("Total Forced Outages (IEC)"),
@@ -108,13 +137,13 @@ fo_yearly = (
         )
     )
 
-fo_yearly_h = fo_yearly.with_columns(    
+failures_yearly_h = failures_yearly.with_columns(    
     pl.col("Total TTR").dt.total_seconds()/3_600,
     pl.col("MTTR").dt.total_seconds()/3_600,
     pl.col("MTTF").dt.total_seconds()/3_600
 )
 
-fo_yearly_h
+failures_yearly_h
 # pl.sql(
 #     """
 #     SELECT *
