@@ -1,5 +1,5 @@
 ---
-title: "Windpark Kelmarsh (20XX) - XX MW"
+title: "Windpark Kelmarsh (2016) - 12.5 MW"
 subtitle: Data Analysis
 author: "Jorge A. Thomas"
 format: html
@@ -8,10 +8,16 @@ jupyter: python3
 
 ## Data Analysis an Testing Great Tables
 
+Infor available here: 
+
+- https://energymap.co.uk/project.asp?pageid=2948
+
+- https://www.gem.wiki/Kelmarsh_wind_farm
 
 ```{python}
 #| label: init
 #| eval: true
+#| echo: false
 
 import os
 from pathlib import Path
@@ -29,34 +35,38 @@ Read parquet files
 
 ```{python}
 
-kwtstatus = pl.read_parquet(f"{folder_path_interim}/Kelmarsh_Turbines_Status_20160114_20230109_n385133_cols12.parquet").fil
+wtstatus = pl.read_parquet(f"{folder_path_interim}/Kelmarsh_Turbines_Status_20160114_20230109_n385133_cols12.parquet")
 
-duckdb.sql("DESCRIBE kwtstatus").show()
+duckdb.sql("DESCRIBE wtstatus").show()
+wtstatus
 ```
 
-Aggregate tables using SQL syntax
-
+Filter Forced Outages
 
 ```{python}
 
-kwt_fo = pl.sql(
+# Aggregate tables using SQL syntax
+fo = pl.sql(
     """
     SELECT * EXCLUDE ("Custom contract category")    
-    FROM kwtstatus
+    FROM wtstatus
     WHERE "IEC category" = 'Forced outage'
     """).collect()
-
-
-
 ```
 
+Add Time Between Failure (TBF) and Time To Failure (TTF)
+
 ```{python}
-pl.sql(
-    """
-    SELECT wt AS "Wind Turbine",
-           strftime('%Y', "Timestamp start") AS Year
-    FROM kwt_fo    
-    """).collect()
+
+# TTF
+fo_rep = fo.with_columns(
+    (pl.col("Timestamp start").shift(-1) - pl.col("Timestamp end")).shift(1).alias("TTF")    
+    ).rename({"Duration":"TTR"})
+
+fo = fo_rep.filter(pl.col("TTF") > pl.duration(seconds=0))
+
+fo = fo.with_columns(pl.col("Timestamp start").diff().alias("TBF"))
+
 ```
 
 ```{python}
@@ -66,7 +76,7 @@ pl.sql(
 #     SELECT wt AS "Wind Turbine",
 #            YEAR([Timestamp start]) AS Year
  ##strftime('%Y', [Timestamp start]) AS Year
-#     FROM kwt_fo    
+#     FROM fo    
 #     """).collect()
 
 
@@ -75,25 +85,33 @@ pl.sql(
 ```{python}
 #| label: forced outages
 
-foutages = (
-    kwtstatus.drop('Custom contract category')
-    .filter(pl.col('IEC category')  == 'Forced outage')
+fo_yearly = (
+    fo.filter(pl.col('IEC category')  == 'Forced outage')
     .group_by("wt",
               pl.col("Timestamp start").dt.year().alias("Year"))
     .agg(
         pl.len().alias("Forced Outages (IEC)"),
-        pl.sum("Duration").alias("Yearly Duration"))
+        pl.sum("TTR").alias("Yearly Duration")
+        # pl.dt.total_seconds().mean("TTR").alias("MTTR"),
+        )
     .rename({"wt": "Turbine"})
-    .sort("Year", "Turbine") 
+    .sort("Turbine", "Year") 
 )
 
-foutages
+fo_yearly
 
 # pl.sql(
 #     """
 #     SELECT *
-#     FROM foutages ORDER BY Year, Turbine
+#     FROM fo_yearly ORDER BY Year, Turbine
 #     """).collect()
 
 ```
 
+
+```{python}
+
+
+
+
+```
