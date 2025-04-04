@@ -38,7 +38,6 @@ Read parquet files
 wtstatus = pl.read_parquet(f"{folder_path_interim}/Kelmarsh_Turbines_Status_20160114_20230109_n385133_cols12.parquet")
 
 duckdb.sql("DESCRIBE wtstatus").show()
-wtstatus
 ```
 
 Filter Forced Outages
@@ -46,12 +45,14 @@ Filter Forced Outages
 ```{python}
 
 # Aggregate tables using SQL syntax
-fo = pl.sql(
+fo_all = pl.sql(
     """
     SELECT * EXCLUDE ("Custom contract category")    
     FROM wtstatus
     WHERE "IEC category" = 'Forced outage'
     """).collect()
+
+fo_all.describe
 ```
 
 Add Time Between Failure (TBF) and Time To Failure (TTF)
@@ -59,17 +60,19 @@ Add Time Between Failure (TBF) and Time To Failure (TTF)
 ```{python}
 
 # TTF
-fo_rep = fo.with_columns(
+fo_rep = fo_all.with_columns(
     (pl.col("Timestamp start").shift(-1) - pl.col("Timestamp end")).shift(1).alias("TTF")    
     ).rename({"Duration":"TTR"})
 
-fo = fo_rep.filter(pl.col("TTF") > pl.duration(seconds=0))
+fo_norep = fo_rep.filter(pl.col("TTF") > pl.duration(seconds=0))
 
-fo = fo.with_columns(pl.col("Timestamp start").diff().alias("TBF"))
+fo = fo_norep.with_columns(pl.col("Timestamp start").diff().alias("TBF"))
 
+fo.describe
 ```
 
 ```{python}
+#| eval: false
 
 # pl.sql(
 #     """
@@ -86,32 +89,35 @@ fo = fo.with_columns(pl.col("Timestamp start").diff().alias("TBF"))
 #| label: forced outages
 
 fo_yearly = (
-    fo.filter(pl.col('IEC category')  == 'Forced outage')
-    .group_by("wt",
-              pl.col("Timestamp start").dt.year().alias("Year"))
+    fo.group_by("wt",
+                pl.col("Timestamp start").dt.year().alias("Year"))
     .agg(
-        pl.len().alias("Forced Outages (IEC)"),
-        pl.sum("TTR").alias("Yearly Duration")
-        # pl.dt.total_seconds().mean("TTR").alias("MTTR"),
+        pl.len().alias("Total Forced Outages (IEC)"),
+        pl.sum("TTR").alias("Total TTR"),
+        pl.mean("TTR").alias("MTTR"),
+        pl.mean("TTF").alias("MTTF")                
         )
     .rename({"wt": "Turbine"})
     .sort("Turbine", "Year") 
+    .with_columns(
+        (pl.col("MTTR").dt.total_seconds()/3_600 + pl.col("MTTF").dt.total_seconds()/3_600).alias("MTBF"),
+        #(pl.col("MTTR").dt.total_hours() + pl.col("MTTF").dt.total_hours()).alias("MTBF hours"),
+        #(1/pl.col("MTTF").dt.total_hours()).alias("FOR hours"),
+        (1/(pl.col("MTTF").dt.total_seconds()/3_600)).alias("FOR")
+        )
+    )
+
+fo_yearly_h = fo_yearly.with_columns(    
+    pl.col("Total TTR").dt.total_seconds()/3_600,
+    pl.col("MTTR").dt.total_seconds()/3_600,
+    pl.col("MTTF").dt.total_seconds()/3_600
 )
 
-fo_yearly
-
+fo_yearly_h
 # pl.sql(
 #     """
 #     SELECT *
 #     FROM fo_yearly ORDER BY Year, Turbine
 #     """).collect()
-
-```
-
-
-```{python}
-
-
-
 
 ```
