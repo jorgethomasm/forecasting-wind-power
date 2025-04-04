@@ -35,6 +35,7 @@ folder_path_processed = PROJECT_ROOT / "data" / "processed"
 fnames = [fname for fname in os.listdir(folder_path_raw) if fname.endswith('.csv')]
 
 fnames_status  = [fname for fname in fnames if fname.startswith("Status_") and len(fname) < 51]
+# fnames_status  = [str(folder_path_raw) + "\\" + fname for fname in fnames if fname.startswith("Status_")]
 fnames_turbine  = [fname for fname in fnames if fname.startswith("Turbine_Data")]
 # fnames_turbine  = [str(folder_path_raw) + "\\" + fname for fname in fnames if fname.startswith("Turbine_Data")]
 fnames_device = [fname for fname in fnames if fname.startswith("Device_Data")]
@@ -88,6 +89,24 @@ grid_status = grid_status.with_columns(
 grid_status.write_parquet(f"{folder_path_interim}{"/Kelmarsh_status_grid_meter.parquet"}")
 
 ```
+
+### Test DuckDB api
+
+```{python}
+#| label: duckdb batch read
+#| #| eval: false
+
+fullfnames_status = [str(folder_path_raw) + "\\" + fname for fname in fnames if fname.startswith("Status_")]
+
+duckdb.sql(    
+    """
+    SELECT *
+    FROM read_csv(fullfnames_status, union_by_name = true, filename = true);
+    """
+)
+
+```
+
 
 ## Status per Wind Turbine
 

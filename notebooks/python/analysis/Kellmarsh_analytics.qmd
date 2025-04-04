@@ -22,7 +22,6 @@ import plotly.express as px
 from great_tables import GT, md
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
-
 folder_path_interim = PROJECT_ROOT / "data" / "interim"
 ```
 
@@ -30,25 +29,71 @@ Read parquet files
 
 ```{python}
 
-kwtstatus = pl.read_parquet(f"{folder_path_interim}/Kelmarsh_Turbines_Status_20160114_20230109_n385133_cols12.parquet")
-
-# DuckDB needs to register the Polars DataFrame
-# duckdb.register('kwtstatus', kwtstatus)
-
+kwtstatus = pl.read_parquet(f"{folder_path_interim}/Kelmarsh_Turbines_Status_20160114_20230109_n385133_cols12.parquet").fil
 
 duckdb.sql("DESCRIBE kwtstatus").show()
 ```
 
-Aggregate tables using DuckDB SQL syntax
+Aggregate tables using SQL syntax
+
 
 ```{python}
 
-foutages = duckdb.sql(
+kwt_fo = pl.sql(
     """
-    SELECT * EXCLUDE("Custom contract category", "Global contract category")
+    SELECT * EXCLUDE ("Custom contract category")    
     FROM kwtstatus
     WHERE "IEC category" = 'Forced outage'
-    """).pl()
+    """).collect()
 
-#foutages
+
+
 ```
+
+```{python}
+pl.sql(
+    """
+    SELECT wt AS "Wind Turbine",
+           strftime('%Y', "Timestamp start") AS Year
+    FROM kwt_fo    
+    """).collect()
+```
+
+```{python}
+
+# pl.sql(
+#     """
+#     SELECT wt AS "Wind Turbine",
+#            YEAR([Timestamp start]) AS Year
+ ##strftime('%Y', [Timestamp start]) AS Year
+#     FROM kwt_fo    
+#     """).collect()
+
+
+```
+
+```{python}
+#| label: forced outages
+
+foutages = (
+    kwtstatus.drop('Custom contract category')
+    .filter(pl.col('IEC category')  == 'Forced outage')
+    .group_by("wt",
+              pl.col("Timestamp start").dt.year().alias("Year"))
+    .agg(
+        pl.len().alias("Forced Outages (IEC)"),
+        pl.sum("Duration").alias("Yearly Duration"))
+    .rename({"wt": "Turbine"})
+    .sort("Year", "Turbine") 
+)
+
+foutages
+
+# pl.sql(
+#     """
+#     SELECT *
+#     FROM foutages ORDER BY Year, Turbine
+#     """).collect()
+
+```
+
