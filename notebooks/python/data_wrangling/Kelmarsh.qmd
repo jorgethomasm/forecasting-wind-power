@@ -22,7 +22,6 @@ https://zenodo.org/records/8252025
 #| label: init
 #| eval: true
 import os
-import duckdb
 import polars as pl
 from pathlib import Path
 

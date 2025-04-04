@@ -1,0 +1,54 @@
+---
+title: "Windpark Kelmarsh (20XX) - XX MW"
+subtitle: Data Analysis
+author: "Jorge A. Thomas"
+format: html
+jupyter: python3
+---
+
+## Data Analysis an Testing Great Tables
+
+
+```{python}
+#| label: init
+#| eval: true
+
+import os
+from pathlib import Path
+import duckdb
+import polars as pl
+import polars.selectors as cs
+import plotly.express as px
+from great_tables import GT, md
+
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+
+folder_path_interim = PROJECT_ROOT / "data" / "interim"
+```
+
+Read parquet files
+
+```{python}
+
+kwtstatus = pl.read_parquet(f"{folder_path_interim}/Kelmarsh_Turbines_Status_20160114_20230109_n385133_cols12.parquet")
+
+# DuckDB needs to register the Polars DataFrame
+# duckdb.register('kwtstatus', kwtstatus)
+
+
+duckdb.sql("DESCRIBE kwtstatus").show()
+```
+
+Aggregate tables using DuckDB SQL syntax
+
+```{python}
+
+foutages = duckdb.sql(
+    """
+    SELECT * EXCLUDE("Custom contract category", "Global contract category")
+    FROM kwtstatus
+    WHERE "IEC category" = 'Forced outage'
+    """).pl()
+
+#foutages
+```
