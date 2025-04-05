@@ -93,9 +93,15 @@ tstates = pl.concat([dtstarts, dtends]).sort(["wt", 'Timestamp'])
 
 tstates= tstates.with_columns(
     pl.when(pl.col("Status") == "Stop").then(0).otherwise(1).alias("State"),
-    pl.col("Timestamp").dt.year().alias("Year"))
+    pl.col("Timestamp").dt.year().alias("Year")    
+    )
+
+tstates= tstates.with_columns(    
+    (pl.col("wt") + " - " + pl.col("Year").cast(str)).alias("wt_Year")
+    )
 
 tstates
+#TODO: remove missing years!
 
 ```
 
@@ -103,11 +109,11 @@ tstates
 
 ```{python}
 #| label: Square Signal Plot
+#| fig-width: 8
+#| fig-height: 12
 
 import plotly.express as px
 
-
-# plx.line(df,line_shape='hv')
 # Other line_shape options, or interpolation methods between given points:
 
 # 'hv' step ends, equivalent to pyplot's post option;
@@ -117,70 +123,25 @@ import plotly.express as px
 # 'spline' smooth curve between points;
 # 'linear' line segments between points, default value for line_shape.
 
-fig = px.line(tstates, x='Timestamp', y="State", line_shape='hv', facet_row="wt",  color="wt",
-     title="Time / State Diagram for Kellmarh's Wind Turbines",
-     labels={"Timestamp": "Time (UTC)", "State": "", "wt": ""})
+fig = px.line(tstates, x='Timestamp', y="State", line_shape='hv', facet_row="wt_Year", color="wt",
+     title="Time / State Diagram for Kellmarsh Wind Turbines (2016-2022)",
+     subtitle= "(0) Down Step=Forced outage (IEC), (1) Up Step=Start",
+     labels={"Timestamp": "Time (UTC)", "State": "", "wt": ""},facet_row_spacing=0.01 )
+
+# Update y-axis to show only 0 and 1 as labels
+fig.update_yaxes(
+    tickvals=[0, 1],  # Set tick values to 0 and 1
+    ticktext=["", ""]  # Optional: Explicitly set tick text
+)
+
+fig.update_xaxes(matches=None, tickformat="%b"  )
+
+
+# Update facet labels orientation and size
+fig.for_each_annotation(lambda a: a.update(text=a.text.split("-")[-1],textangle=0, xanchor='left', x=-0.04))  # Make labels horizontal
+fig.update_annotations(font_size=8)  # Reduce font size
+
 fig.show()
-
-
-
-
-
-
-```
-
-
-```{python}
-
-# # Create a square signal plot for each turbine (wt)
-# fig = px.step(
-#     tstates,
-#     x="Timestamp",
-#     y="State",
-#     color="wt",
-#     title="Square Signal Plot per Turbine",
-#     labels={"Timestamp": "Time", "State": "State (0=Stop, 1=Start)", "wt": "Turbine"}
-# )
-
-# # Update layout for better visualization
-# fig.update_layout(
-#     xaxis_title="Timestamp",
-#     yaxis_title="State",
-#     legend_title="Turbine",
-#     template="plotly_white"
-# )
-
-# # Show the plot
-# fig.show()
-
-# import plotly.graph_objects as go
-
-# # Create a step-like plot for each turbine (wt)
-# fig = go.Figure()
-
-# # Group data by turbine (wt) and add traces for each turbine
-# for turbine, group in tstates.group_by("wt"):
-#     fig.add_trace(
-#         go.Scatter(
-#             x=group["Timestamp"],
-#             y=group["State"],
-#             mode="lines",
-#             name=f"Turbine {turbine}",
-#             line_shape="hv"  # Horizontal-vertical step plot
-#         )
-#     )
-
-# # Update layout for better visualization
-# fig.update_layout(
-#     title="Square Signal Plot per Turbine",
-#     xaxis_title="Timestamp",
-#     yaxis_title="State (0=Stop, 1=Start)",
-#     legend_title="Turbine",
-#     template="plotly_white"
-# )
-
-# Show the plot
-# fig.show()
 
 
 ```
