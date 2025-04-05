@@ -8,10 +8,12 @@ dependencies = [
     "duckdb>=1.2.1",
     "great-tables>=0.17.0",
     "ipykernel>=6.29.5",
+    "nbclient>=0.10.2",
     "nbformat>=5.10.4",
     "pandas>=2.2.3",
     "plotly>=6.0.1",
     "polars>=1.26.0",
     "pyarrow>=19.0.1",
+    "pyyaml>=6.0.2",
     "tzdata>=2025.2",
 ]

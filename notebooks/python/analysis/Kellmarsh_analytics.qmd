@@ -92,7 +92,8 @@ tstates = pl.concat([dtstarts, dtends]).sort(["wt", 'Timestamp'])
 # tstates_ts = dtstarts.join(dtends, on="Timestamp", how="full").sort(["wt", 'Timestamp'])
 
 tstates= tstates.with_columns(
-    pl.when(pl.col("Status") == "Stop").then(0).otherwise(1).alias("State"))
+    pl.when(pl.col("Status") == "Stop").then(0).otherwise(1).alias("State"),
+    pl.col("Timestamp").dt.year().alias("Year"))
 
 tstates
 
@@ -104,6 +105,32 @@ tstates
 #| label: Square Signal Plot
 
 import plotly.express as px
+
+
+# plx.line(df,line_shape='hv')
+# Other line_shape options, or interpolation methods between given points:
+
+# 'hv' step ends, equivalent to pyplot's post option;
+# 'vh' step starts;
+# 'hvh' step middles, x axis;
+# 'vhv' step middles, y axis;
+# 'spline' smooth curve between points;
+# 'linear' line segments between points, default value for line_shape.
+
+fig = px.line(tstates, x='Timestamp', y="State", line_shape='hv', facet_row="wt",  color="wt",
+     title="Time / State Diagram for Kellmarh's Wind Turbines",
+     labels={"Timestamp": "Time (UTC)", "State": "", "wt": ""})
+fig.show()
+
+
+
+
+
+
+```
+
+
+```{python}
 
 # # Create a square signal plot for each turbine (wt)
 # fig = px.step(
@@ -126,34 +153,35 @@ import plotly.express as px
 # # Show the plot
 # fig.show()
 
-import plotly.graph_objects as go
+# import plotly.graph_objects as go
 
-# Create a step-like plot for each turbine (wt)
-fig = go.Figure()
+# # Create a step-like plot for each turbine (wt)
+# fig = go.Figure()
 
-# Group data by turbine (wt) and add traces for each turbine
-for turbine, group in tstates.group_by("wt"):
-    fig.add_trace(
-        go.Scatter(
-            x=group["Timestamp"],
-            y=group["State"],
-            mode="lines",
-            name=f"Turbine {turbine}",
-            line_shape="hv"  # Horizontal-vertical step plot
-        )
-    )
+# # Group data by turbine (wt) and add traces for each turbine
+# for turbine, group in tstates.group_by("wt"):
+#     fig.add_trace(
+#         go.Scatter(
+#             x=group["Timestamp"],
+#             y=group["State"],
+#             mode="lines",
+#             name=f"Turbine {turbine}",
+#             line_shape="hv"  # Horizontal-vertical step plot
+#         )
+#     )
 
-# Update layout for better visualization
-fig.update_layout(
-    title="Square Signal Plot per Turbine",
-    xaxis_title="Timestamp",
-    yaxis_title="State (0=Stop, 1=Start)",
-    legend_title="Turbine",
-    template="plotly_white"
-)
+# # Update layout for better visualization
+# fig.update_layout(
+#     title="Square Signal Plot per Turbine",
+#     xaxis_title="Timestamp",
+#     yaxis_title="State (0=Stop, 1=Start)",
+#     legend_title="Turbine",
+#     template="plotly_white"
+# )
 
 # Show the plot
-fig.show()
+# fig.show()
+
 
 ```
 
