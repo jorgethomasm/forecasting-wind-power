@@ -1,6 +1,6 @@
 ---
-title: "Windpark Kelmarsh (2016) - 12.5 MW"
-subtitle: "Reliability Evaluation"
+title: "SCADA-Based Reliability Evaluation"
+subtitle: "Kelmarsh Wind Farm - 12.5 MW"
 author: "Jorge A. Thomas"
 date: April.2025
 format:    
@@ -13,25 +13,25 @@ format:
       toc: true
       toc-depth: 3
       grid: 
-        margin-width: 350px
+        margin-width: 350px      
 execute: 
-  echo: fenced
+  echo: false
 reference-location: margin 
 citation-location: document
 ---
 
 ## Project Overview
 
-"Kelmarsh Wind Farm is located near Haselbach, Northamptonshire and comprises six 2.05MW Senvion MM92 turbines. The Project was acquired from EON in December 2014 and was constructed in joint venture with Santander using balance sheet finance. Construction was completed in April 2016. It is now owned by Cubico Investments."
+"Kelmarsh comprises six 2.05MW Senvion MM92 turbines. The Project was acquired from EON in December 2014 and was constructed in joint venture with Santander using balance sheet finance. Construction was completed in April 2016. It is now owned by Cubico Investments."
 
 -   https://www.blue-energyco.com/our-projects/kelmarsh/
 
 ::: {#fig-intro layout-ncol="2"}
-![(a) Kelmarsh Wind Farm](../imgs/Kelmarsh_wind_project_blue-energyco.jpg){width="100%"}
+![(a) Kelmarsh Wind Farm](../imgs/Kelmarsh_wind_project_blue-energyco.jpg){width="98%"}
 
-![(b) Senvion MM92 turbine](../imgs/turbine-senvion_mm92.jpg){width="100%"}
+![(b) Senvion MM92 turbine](../imgs/turbine-senvion_mm92.jpg){width="98%"}
 
-Near Haselbach, Northamptonshire (UK).
+Kelmarsh Wind Farm is located near Haselbach, Northamptonshire, UK.
 :::
 
 ```{python}
@@ -49,22 +49,15 @@ import polars.selectors as cs
 import plotly.express as px
 from great_tables import GT, md
 
-# PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
-# folder_path_interim = PROJECT_ROOT / "data" / "interim"
-folder_path_interim = "../data/interim/"
-
+fpath_interim = "../data/interim/"
 ```
-
-Read parquet files
 
 ```{python}
 #| label: Read-Data
-tstatus = pl.read_parquet(f"{folder_path_interim}Kelmarsh_Turbines_Status_20160114_20230109_n385133_cols12.parquet")
+tstatus = pl.read_parquet(f"{fpath_interim}Kelmarsh_Turbines_Status_20160114_20230109_n385133_cols12.parquet")
 
-tstatus
+# tstatus
 ```
-
-Filter Stop
 
 ```{python}
 #| label: Filter-Stops
@@ -76,8 +69,6 @@ stops = pl.sql(
     WHERE "Status" = 'Stop'
     """).collect()
 ```
-
-Filter Forced Outages
 
 ```{python}
 #| label: Filter-Forced-Outages
@@ -101,20 +92,21 @@ foutages = foutages.with_columns(
     pl.when(pl.col("TTF") < 0).then(None).otherwise(pl.col("TTF")).alias("TTF")
 )
 
-foutages
+# foutages
 ```
-
-## Time Series for Binary Plot
 
 ```{python}
 #| label: Binary-Plot
 
+#'
+# Generate data frame with 0-1 states
+# '
+
 dtstarts = foutages.select(["Timestamp start", "Status", "Message",  "wt"]).rename({"Timestamp start": "Timestamp"})
+
 dtends = foutages.select(["Timestamp end", "Status", "Message",  "wt"]).with_columns(pl.lit("Start").alias("Status")).rename({"Timestamp end": "Timestamp"})
 
 tstates = pl.concat([dtstarts, dtends]).sort(["wt", 'Timestamp'])
-
-# tstates_ts = dtstarts.join(dtends, on="Timestamp", how="full").sort(["wt", 'Timestamp'])
 
 tstates= tstates.with_columns(
     pl.when(pl.col("Status") == "Stop").then(0).otherwise(1).alias("State"),
@@ -122,10 +114,45 @@ tstates= tstates.with_columns(
     )
 
 tstates= tstates.with_columns(    
-    (pl.col("wt") + "-" + pl.col("Year").cast(str)).alias("wt_Year")
-    )
+    (pl.col("Year").cast(str) + "-" + pl.col("wt")).alias("Year_wt")
+    ).sort(["Year_wt", "Timestamp"])
 
 tstates = tstates.drop_nulls()
+```
+
+```{python}
+#| label: fill-gaps-start-end-year
+
+# Identify the first row of each year
+first_rows = tstates.group_by("Year_wt").first().drop("Status").sort("Year")
+
+# Create new rows with the opposite State
+first_rows = first_rows.with_columns(
+    (1 - pl.col("State")).alias("State"),  # Flip the State (0 -> 1, 1 -> 0)
+    pl.col("Timestamp").dt.truncate("1y").alias("Timestamp")  # Floor timestamp to start of year
+    )
+
+# Identify the last row of each year
+last_rows = tstates.group_by("Year_wt").last().drop("Status").sort("Year")
+last_rows = last_rows.with_columns(
+    (1 - pl.col("State")).alias("State"),  # Flip the State (0 -> 1, 1 -> 0)
+    pl.col("Timestamp").dt.truncate("1y").dt.offset_by("1y").dt.offset_by("-1s").alias("Timestamp")  # Floor timestamp to start of year
+    )
+
+new_rows = pl.concat([first_rows, last_rows])
+
+new_rows = new_rows.with_columns(    
+    pl.when(pl.col("State") == 1)
+      .then(pl.lit("Start"))
+      .otherwise(pl.lit("Stop"))
+      .alias("Status")
+      )
+
+# Ensure columns match before concatenation
+columns = tstates.columns
+new_rows = new_rows.select(columns)
+
+tstates = pl.concat([tstates, new_rows]).sort(["Year_wt", "Timestamp"])
 
 ```
 
@@ -148,10 +175,10 @@ print("\nMissing value counts per column:")
 print(tstates.null_count())
 ```
 
-## Time / State Diagram for each Turbine
 
 ```{python}
 #| label: Square-Signal-Plot
+#| eval: false
 
 import plotly.express as px
 
@@ -164,32 +191,33 @@ import plotly.express as px
 # 'spline' smooth curve between points;
 # 'linear' line segments between points, default value for line_shape.
 
-fig = px.line(tstates, x='Timestamp', y="State", line_shape='hv', facet_row="wt_Year", color="wt",
-     hover_data=["Message", "Status"],  # Add the variables you want in tooltip
-     title="Time / State Diagram for Kellmarsh Wind Turbines (2016-2022)",
-     subtitle= "(0) Down Step=Forced outage (IEC), (1) Up Step=Start",
-     labels={"Timestamp": "Time (UTC)", "State": "", "wt": ""},facet_row_spacing=0.01 )
-
-# Make facets wider by adjusting height and layout
-fig.update_layout(
-    height=1600,  # Increase overall height
-    width=1000,   # Set overall width
-)
-
+fig = px.line(tstates,
+              x='Timestamp', 
+              y="State", 
+              line_shape='hv', 
+              facet_row="Year_wt",
+              color="wt",
+              hover_data=["Timestamp", "Message", "Status"],  # Add the variables you want in tooltip
+              title="Time / State Diagram for Kellmarsh Wind Turbines (2016-2022)",
+              subtitle= "Step-down = Forced outage (IEC); Step-up=Start",
+              labels={"Timestamp": "UTC", "State": "", "wt": ""}, 
+              facet_row_spacing=0.01
+              )
 # Adjust spacing between facets
 fig.update_layout(
+    height=1200,  # Increase overall height
+    width=800,   # Set overall width
     margin=dict(l=100, r=50, t=100, b=50),  # Adjust margins
     showlegend=True,
-    legend=dict(
-        orientation="h",
-        yanchor="bottom",
-        y=1.01,
-        xanchor="right",
-        x=1,
-        font=dict(size=8),  # Reduce legend font size
-        itemsizing='constant',  # Make legend items more compact
-        itemwidth=30  # Reduce width of legend items
-    )
+    legend=dict(orientation="h",
+                yanchor="bottom",
+                y=1.01,
+                xanchor="right",
+                x=1,
+                font=dict(size=8),  # Reduce legend font size
+                itemsizing='constant',  # Make legend items more compact
+                itemwidth=30  # Reduce width of legend items
+                )                
 )
 
 # Update y-axis to show only 0 and 1 as labels
@@ -198,13 +226,189 @@ fig.update_yaxes(
     ticktext=["", ""]  # Optional: Explicitly set tick text
 )
 
-fig.update_xaxes(matches=None, tickformat="%b"  )
+fig.update_xaxes(matches="x", 
+tickformat="%b",
+showgrid=True
+)
+# fig.update_xaxes(
+#     matches=None,
+#     tickformat="%d-%b",  # Show day and month
+#     dtick="M12",        # Show ticks every 12 months
+#     tick0="2016-01-01", # Start from January 1st
+#     showgrid=True,
+#     ticklabelmode="period"
+#)
+
 
 # Update facet labels orientation and size
-fig.for_each_annotation(lambda a: a.update(text=a.text.split("-")[-1],textangle=0, xanchor='left', x=-0.04))  # Make labels horizontal
+fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1], textangle=0, xanchor='left', x=-0.06))  # Make labels horizontal
 fig.update_annotations(font_size=9)  # Reduce font size
 
 
 fig.show()
+
+```
+
+## Time / State Diagram for Kelmarsh Wind Turbines
+
+```{python}
+#| label: Time-State-Plot-By-Year
+
+import plotly.express as px
+from plotly.subplots import make_subplots
+
+# Get unique years
+years = tstates["Year"].unique().sort()
+
+# Create a plot for each year
+pl_time_state = []
+for year in years:
+    # Filter data for current year
+    year_data = tstates.filter(pl.col("Year") == year)
+    
+    fig = px.line(year_data,
+                  x='Timestamp', 
+                  y="State", 
+                  line_shape='hv', 
+                  facet_row="wt",
+                  color="wt",
+                  hover_data=["Message", "Status"],
+                  title="Step-down: Forced outage (IEC) | Step-up: Start",
+                  #subtitle= "(0) Down Step=Forced outage (IEC), (1) Up Step=Start",
+                  labels={"Timestamp": "UTC", "State": "", "wt": ""}, 
+                  facet_row_spacing=0.01
+                  )
+    # Update layout
+    fig.update_layout(
+        height=700,
+        width=700,
+        margin=dict(l=100, r=50, t=100, b=50),
+        showlegend=False,
+        legend=dict(orientation="h",
+                    yanchor="bottom",
+                    y=1.01,
+                    xanchor="right",
+                    x=1,
+                    font=dict(size=8),
+                    itemsizing='constant',
+                    itemwidth=30
+                    )                
+    )
+    # Update axes
+    fig.update_yaxes(
+        tickvals=[0, 1],
+        ticktext=["", ""]
+    )
+    fig.update_xaxes(
+        matches='x',
+        tickformat="%b",
+        dtick="M1",  # Show ticks every month
+        showgrid=True
+    )
+    # Update facet labels
+    fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1], 
+                                              textangle=0, 
+                                              xanchor='left', 
+                                              x=-0.05))
+    fig.update_annotations(font_size=10)
+    pl_time_state.append(fig)
+```
+
+::: {.panel-tabset}
+
+## 2016
+
+```{python}
+pl_time_state[0].show()
+```
+
+## 2017
+
+```{python}
+pl_time_state[1].show()
+```
+
+## 2018
+
+```{python}
+pl_time_state[2].show()
+```
+
+## 2019
+
+```{python}
+pl_time_state[3].show()
+```
+
+## 2020
+
+```{python}
+pl_time_state[4].show()
+```
+
+## 2021
+
+```{python}
+pl_time_state[5].show()
+```
+
+# 2022
+
+```{python}
+pl_time_state[6].show()
+```
+
+:::
+
+```{python}
+
+restarts = pl.sql(""" 
+    SELECT *
+    FROM tstates
+    WHERE State = 1
+""").collect()
+
+
+stops = pl.sql(""" 
+    SELECT Timestamp AS 'Timestamp end'
+    FROM tstates
+    WHERE State = 0
+""").collect()
+
+
+
+```
+
+```{python}
+#| label: Reliablity-parameters
+#| eval: false
+
+foutages_agg_year = (
+    foutages.group_by("wt",
+                pl.col("Timestamp start").dt.year().alias("Year"))
+    .agg(
+        pl.len().alias("Total Forced Outages (IEC)"),
+        pl.sum("TTF").alias("Total TTF"),        
+        pl.sum("TTR").alias("Total TTR"),
+        pl.mean("TTR").alias("MTTR"),
+        pl.mean("TTF").alias("MTTF")                
+        )
+    .rename({"wt": "Turbine"})
+    .sort("Turbine", "Year") 
+    .with_columns(
+        (pl.col("MTTR").dt.total_seconds()/3_600 + pl.col("MTTF").dt.total_seconds()/3_600).alias("MTBF"),
+        #(pl.col("MTTR").dt.total_hours() + pl.col("MTTF").dt.total_hours()).alias("MTBF hours"),
+        #(1/pl.col("MTTF").dt.total_hours()).alias("FOR hours"),
+        (1/(pl.col("MTTF").dt.total_seconds()/3_600)).alias("Failure Rate")
+        )
+    )
+
+foutages_yearly_h = foutages_agg_year.with_columns(    
+    pl.col("Total TTR").dt.total_seconds()/3_600,
+    pl.col("MTTR").dt.total_seconds()/3_600,
+    pl.col("MTTF").dt.total_seconds()/3_600
+)
+
+foutages_yearly_h
 
 ```

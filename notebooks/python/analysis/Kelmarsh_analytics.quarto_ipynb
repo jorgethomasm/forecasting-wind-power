@@ -1,0 +1,278 @@
+{
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "---\n",
+        "title: \"Windpark Kelmarsh (2016) - 12.5 MW\"\n",
+        "subtitle: Data Analysis\n",
+        "author: \"Jorge A. Thomas\"\n",
+        "format: html\n",
+        "jupyter: python3\n",
+        "---\n",
+        "\n",
+        "\n",
+        "## Data Analysis an Testing Great Tables\n",
+        "\n",
+        "Infor available here: \n",
+        "\n",
+        "- https://energymap.co.uk/project.asp?pageid=2948\n",
+        "\n",
+        "- https://www.gem.wiki/Kelmarsh_wind_farm\n"
+      ],
+      "id": "ef3c46dd"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "#| label: init\n",
+        "#| eval: true\n",
+        "#| echo: false\n",
+        "\n",
+        "from pathlib import Path\n",
+        "import duckdb\n",
+        "import polars as pl\n",
+        "import polars.selectors as cs\n",
+        "import plotly.express as px\n",
+        "from great_tables import GT, md\n",
+        "\n",
+        "PROJECT_ROOT = Path(__file__).parent.parent.parent.parent\n",
+        "folder_path_interim = PROJECT_ROOT / \"data\" / \"interim\""
+      ],
+      "id": "init",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "Read parquet files\n"
+      ],
+      "id": "b686a634"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "tstatus = pl.read_parquet(f\"{folder_path_interim}/Kelmarsh_Turbines_Status_20160114_20230109_n385133_cols12.parquet\")\n",
+        "\n",
+        "duckdb.sql(\"DESCRIBE tstatus\").show()"
+      ],
+      "id": "53c17dcc",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "Filter Stop\n"
+      ],
+      "id": "ba8b1d89"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "#| label: Filter Stops\n",
+        "\n",
+        "stops = pl.sql(    \n",
+        "    \"\"\"\n",
+        "    SELECT * EXCLUDE (\"Custom contract category\")    \n",
+        "    FROM tstatus\n",
+        "    WHERE \"Status\" = 'Stop'\n",
+        "    \"\"\").collect()"
+      ],
+      "id": "Filter-Stops",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "Filter Forced Outages\n"
+      ],
+      "id": "07c8690d"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "#| label: Filter Forced Outages\n",
+        "# Aggregate tables using SQL syntax\n",
+        "\n",
+        "foutages = pl.sql(\n",
+        "    \"\"\"\n",
+        "    SELECT * \n",
+        "    FROM stops\n",
+        "    WHERE \"IEC category\" = 'Forced outage' \n",
+        "    \"\"\").collect()\n",
+        "\n",
+        "foutages = foutages.rename({\"Duration\":\"TTR\"})\n",
+        "\n",
+        "# TTF\n",
+        "foutages = foutages.with_columns(\n",
+        "    (pl.col(\"Timestamp start\").shift(-1) - pl.col(\"Timestamp end\")).shift(1).alias(\"TTF\")\n",
+        "    )\n",
+        "\n",
+        "foutages = foutages.with_columns(\n",
+        "    pl.when(pl.col(\"TTF\") < 0).then(None).otherwise(pl.col(\"TTF\")).alias(\"TTF\")\n",
+        ")\n",
+        "\n",
+        "foutages.describe"
+      ],
+      "id": "Filter-Forced-Outages",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "## Time Series for Binary Plot\n"
+      ],
+      "id": "fdb15b58"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "#| label: Binary Plot\n",
+        "\n",
+        "dtstarts = foutages.select([\"Timestamp start\", \"Status\", \"Message\",  \"wt\"]).rename({\"Timestamp start\": \"Timestamp\"})\n",
+        "dtends = foutages.select([\"Timestamp end\", \"Status\", \"Message\",  \"wt\"]).with_columns(pl.lit(\"Start\").alias(\"Status\")).rename({\"Timestamp end\": \"Timestamp\"})\n",
+        "\n",
+        "tstates = pl.concat([dtstarts, dtends]).sort([\"wt\", 'Timestamp'])\n",
+        "\n",
+        "# tstates_ts = dtstarts.join(dtends, on=\"Timestamp\", how=\"full\").sort([\"wt\", 'Timestamp'])\n",
+        "\n",
+        "tstates= tstates.with_columns(\n",
+        "    pl.when(pl.col(\"Status\") == \"Stop\").then(0).otherwise(1).alias(\"State\"),\n",
+        "    pl.col(\"Timestamp\").dt.year().alias(\"Year\")    \n",
+        "    )\n",
+        "\n",
+        "tstates= tstates.with_columns(    \n",
+        "    (pl.col(\"wt\") + \" - \" + pl.col(\"Year\").cast(str)).alias(\"wt_Year\")\n",
+        "    )\n",
+        "\n",
+        "tstates\n",
+        "#TODO: remove missing years!"
+      ],
+      "id": "Binary-Plot",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "## Plot Square Signal\n"
+      ],
+      "id": "9475a842"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "fig-width": 8,
+        "fig-height": 12
+      },
+      "source": [
+        "#| label: Square Signal Plot\n",
+        "\n",
+        "import plotly.express as px\n",
+        "\n",
+        "# Other line_shape options, or interpolation methods between given points:\n",
+        "\n",
+        "# 'hv' step ends, equivalent to pyplot's post option;\n",
+        "# 'vh' step starts;\n",
+        "# 'hvh' step middles, x axis;\n",
+        "# 'vhv' step middles, y axis;\n",
+        "# 'spline' smooth curve between points;\n",
+        "# 'linear' line segments between points, default value for line_shape.\n",
+        "\n",
+        "fig = px.line(tstates, x='Timestamp', y=\"State\", line_shape='hv', facet_row=\"wt_Year\", color=\"wt\",\n",
+        "     title=\"Time / State Diagram for Kellmarsh Wind Turbines (2016-2022)\",\n",
+        "     subtitle= \"(0) Down Step=Forced outage (IEC), (1) Up Step=Start\",\n",
+        "     labels={\"Timestamp\": \"Time (UTC)\", \"State\": \"\", \"wt\": \"\"},facet_row_spacing=0.01 )\n",
+        "\n",
+        "# Update y-axis to show only 0 and 1 as labels\n",
+        "fig.update_yaxes(\n",
+        "    tickvals=[0, 1],  # Set tick values to 0 and 1\n",
+        "    ticktext=[\"\", \"\"]  # Optional: Explicitly set tick text\n",
+        ")\n",
+        "\n",
+        "fig.update_xaxes(matches=None, tickformat=\"%b\"  )\n",
+        "\n",
+        "\n",
+        "# Update facet labels orientation and size\n",
+        "fig.for_each_annotation(lambda a: a.update(text=a.text.split(\"-\")[-1],textangle=0, xanchor='left', x=-0.04))  # Make labels horizontal\n",
+        "fig.update_annotations(font_size=8)  # Reduce font size\n",
+        "\n",
+        "fig.show()\n"
+      ],
+      "id": "Square-Signal-Plot",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "Add Time Between Failure (TBF) and Time To Failure (TTF)\n"
+      ],
+      "id": "be7f546b"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "#| label: forced outages\n",
+        "\n",
+        "foutages_agg_year = (\n",
+        "    foutages.group_by(\"wt\",\n",
+        "                pl.col(\"Timestamp start\").dt.year().alias(\"Year\"))\n",
+        "    .agg(\n",
+        "        pl.len().alias(\"Total Forced Outages (IEC)\"),\n",
+        "        pl.sum(\"TTF\").alias(\"Total TTF\"),        \n",
+        "        pl.sum(\"TTR\").alias(\"Total TTR\"),\n",
+        "        pl.mean(\"TTR\").alias(\"MTTR\"),\n",
+        "        pl.mean(\"TTF\").alias(\"MTTF\")                \n",
+        "        )\n",
+        "    .rename({\"wt\": \"Turbine\"})\n",
+        "    .sort(\"Turbine\", \"Year\") \n",
+        "    .with_columns(\n",
+        "        (pl.col(\"MTTR\").dt.total_seconds()/3_600 + pl.col(\"MTTF\").dt.total_seconds()/3_600).alias(\"MTBF\"),\n",
+        "        #(pl.col(\"MTTR\").dt.total_hours() + pl.col(\"MTTF\").dt.total_hours()).alias(\"MTBF hours\"),\n",
+        "        #(1/pl.col(\"MTTF\").dt.total_hours()).alias(\"FOR hours\"),\n",
+        "        (1/(pl.col(\"MTTF\").dt.total_seconds()/3_600)).alias(\"Failure Rate\")\n",
+        "        )\n",
+        "    )\n",
+        "\n",
+        "foutages_yearly_h = foutages_agg_year.with_columns(    \n",
+        "    pl.col(\"Total TTR\").dt.total_seconds()/3_600,\n",
+        "    pl.col(\"MTTR\").dt.total_seconds()/3_600,\n",
+        "    pl.col(\"MTTF\").dt.total_seconds()/3_600\n",
+        ")\n",
+        "\n",
+        "foutages_yearly_h"
+      ],
+      "id": "forced-outages",
+      "execution_count": null,
+      "outputs": []
+    }
+  ],
+  "metadata": {
+    "kernelspec": {
+      "name": "python3",
+      "language": "python",
+      "display_name": "Python 3 (ipykernel)",
+      "path": "d:\\Repositories\\forecasting-wind-power\\.venv\\share\\jupyter\\kernels\\python3"
+    }
+  },
+  "nbformat": 4,
+  "nbformat_minor": 5
+}
