@@ -106,6 +106,7 @@ dtstarts = foutages.select(["Timestamp start", "Status", "Message",  "wt"]).rena
 
 dtends = foutages.select(["Timestamp end", "Status", "Message",  "wt"]).with_columns(pl.lit("Start").alias("Status")).rename({"Timestamp end": "Timestamp"})
 
+# Vertical concatenation
 tstates = pl.concat([dtstarts, dtends]).sort(["wt", 'Timestamp'])
 
 tstates= tstates.with_columns(
@@ -134,9 +135,15 @@ first_rows = first_rows.with_columns(
 
 # Identify the last row of each year
 last_rows = tstates.group_by("Year_wt").last().drop("Status").sort("Year")
+
+# TODO: Last rows introuduces 42 failures if flipped 1 -> 0
+
+# Create new rows with the opposite State
 last_rows = last_rows.with_columns(
-    (1 - pl.col("State")).alias("State"),  # Flip the State (0 -> 1, 1 -> 0)
-    pl.col("Timestamp").dt.truncate("1y").dt.offset_by("1y").dt.offset_by("-1s").alias("Timestamp")  # Floor timestamp to start of year
+    # (1 - pl.col("State")).alias("State"),  # Flip the State (0 -> 1, 1 -> 0)
+    (pl.col("State")).alias("State"),  # Flip the State (0 -> 1, 1 -> 0)
+    pl.col("Timestamp").dt.truncate("1y").dt.offset_by("1y").dt.offset_by("-1s").alias("Timestamp"),  # Floor timestamp to start of year
+    pl.lit("OK").alias("Message")
     )
 
 new_rows = pl.concat([first_rows, last_rows])
@@ -363,6 +370,11 @@ pl_time_state[6].show()
 :::
 
 ```{python}
+#| label: ttf-ttf
+#| eval: true
+
+
+# TODO: make missing with last!
 
 tstates = tstates.with_columns(
     (pl.col("Timestamp").diff().dt.total_seconds()/3_600).alias("Duration")
@@ -378,61 +390,41 @@ tstates = tstates.with_columns(
 ttf = tstates.filter(pl.col("State") == 0).rename({"Duration": "TTF"})
 ttr = tstates.filter(pl.col("State") == 1).rename({"Duration": "TTR"})
 
-
-
-
 ```
 
-
-```{python}
-
-restarts = pl.sql(""" 
-    SELECT *
-    FROM tstates
-    WHERE State = 1
-""").collect()
-
-
-stops = pl.sql(""" 
-    SELECT Timestamp AS 'Timestamp end'
-    FROM tstates
-    WHERE State = 0
-""").collect()
-
-
-
-```
 
 ```{python}
 #| label: Reliablity-parameters
 #| eval: false
 
 foutages_agg_year = (
-    foutages.group_by("wt",
-                pl.col("Timestamp start").dt.year().alias("Year"))
+    ttr.group_by("Year_wt")
     .agg(
-        pl.len().alias("Total Forced Outages (IEC)"),
-        pl.sum("TTF").alias("Total TTF"),        
-        pl.sum("TTR").alias("Total TTR"),
-        pl.mean("TTR").alias("MTTR"),
-        pl.mean("TTF").alias("MTTF")                
+        pl.len().alias("State"),                
+        pl.sum("TTR").alias("Total TTR [h]"),
+        pl.mean("TTR").alias("MTTR [h]")                      
         )
-    .rename({"wt": "Turbine"})
-    .sort("Turbine", "Year") 
-    .with_columns(
-        (pl.col("MTTR").dt.total_seconds()/3_600 + pl.col("MTTF").dt.total_seconds()/3_600).alias("MTBF"),
-        #(pl.col("MTTR").dt.total_hours() + pl.col("MTTF").dt.total_hours()).alias("MTBF hours"),
-        #(1/pl.col("MTTF").dt.total_hours()).alias("FOR hours"),
-        (1/(pl.col("MTTF").dt.total_seconds()/3_600)).alias("Failure Rate")
-        )
+    # .rename({"wt": "Turbine"})
+    .sort("Year_wt")     
     )
 
-foutages_yearly_h = foutages_agg_year.with_columns(    
-    pl.col("Total TTR").dt.total_seconds()/3_600,
-    pl.col("MTTR").dt.total_seconds()/3_600,
-    pl.col("MTTF").dt.total_seconds()/3_600
-)
 
-foutages_yearly_h
+
+# foutages_agg_year = (
+#     ttf.group_by("Year_wt")
+#     .agg(
+#         pl.len().alias("State"),                
+#         pl.sum("TTR").alias("Total TTR [h]"),
+#         pl.mean("TTR").alias("MTTR [h]")                      
+#         )
+#     .rename({"wt": "Turbine"})
+#     .sort("Year_wt") 
+#     .with_columns(
+#         (pl.col("MTTR").dt.total_seconds()/3_600 + pl.col("MTTF").dt.total_seconds()/3_600).alias("MTBF"),
+#         #(pl.col("MTTR").dt.total_hours() + pl.col("MTTF").dt.total_hours()).alias("MTBF hours"),
+#         #(1/pl.col("MTTF").dt.total_hours()).alias("FOR hours"),
+#         (1/(pl.col("MTTF").dt.total_seconds()/3_600)).alias("Failure Rate")
+#         )
+#     )
 
 ```
