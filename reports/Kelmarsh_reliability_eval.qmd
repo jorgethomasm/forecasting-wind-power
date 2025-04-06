@@ -114,6 +114,8 @@ tstates= tstates.with_columns(
     pl.col("Timestamp").dt.year().alias("Year")    
     )
 
+last_year = tstates["Year"].unique().max()
+
 tstates= tstates.with_columns(    
     (pl.col("Year").cast(str) + "-" + pl.col("wt")).alias("Year_wt")
     ).sort(["Year_wt", "Timestamp"])
@@ -160,6 +162,15 @@ new_rows = new_rows.with_columns(
 new_rows = new_rows.select(tstates.columns)  # reorder rows
 
 tstates = pl.concat([tstates, new_rows]).sort(["Year_wt", "Timestamp"])
+
+
+```
+
+```{python}
+
+# ---- 6) Drop columns Year > 2022 2023 
+
+tstates = tstates.filter(pl.col("Year") <= last_year)
 
 ```
 
@@ -363,22 +374,22 @@ pl_time_state[6].show()
 #| label: ttf-ttf
 #| eval: true
 
-
-# TODO: make missing with last!
-
 tstates_dur = tstates.with_columns(
     (pl.col("Timestamp").diff().dt.total_seconds()/3_600).alias("Duration")
 )
 
-tstates_dur = tstates.with_columns(
+tstates_dur = tstates_dur.with_columns(
     pl.when(pl.col("Duration") <= 0)
     .then(None)
     .otherwise(pl.col("Duration"))
     .alias("Duration")    
 )
 
-# ttf = tstates_dur.filter(pl.col("State") == 0).rename({"Duration": "TTF"})
-# ttr = tstates_dur.filter(pl.col("State") == 1).rename({"Duration": "TTR"})
+
+# TODO: Check "last seen" durations in ttr
+
+ttf = tstates_dur.filter(pl.col("State") == 0).rename({"Duration": "TTF"})
+ttr = tstates_dur.filter(pl.col("State") == 1).rename({"Duration": "TTR"})
 
 ```
 
