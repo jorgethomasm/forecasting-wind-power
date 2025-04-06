@@ -122,30 +122,40 @@ tstates = tstates.drop_nulls()
 ```
 
 ```{python}
-#| label: fill-gaps-start-end-year
+#| label: e-o-y-algo
 
-# Identify the first row of each year
-first_rows = tstates.group_by("Year_wt").first().drop("Status").sort("Year")
+# ---- 1) Id  last row per year per wt
 
-# Create new rows with the opposite State
-first_rows = first_rows.with_columns(
-    (1 - pl.col("State")).alias("State"),  # Flip the State (0 -> 1, 1 -> 0)
-    pl.col("Timestamp").dt.truncate("1y").alias("Timestamp")  # Floor timestamp to start of year
-    )
+# TODO: wt_ year? 
 
-# Identify the last row of each year
 last_rows = tstates.group_by("Year_wt").last().drop("Status").sort("Year")
 
-# TODO: Last rows introuduces 42 failures if flipped 1 -> 0
+# ---- 2) Create new rows with the same (last seen) State
 
-# Create new rows with the opposite State
-last_rows = last_rows.with_columns(
-    # (1 - pl.col("State")).alias("State"),  # Flip the State (0 -> 1, 1 -> 0)
-    (pl.col("State")).alias("State"),  # Flip the State (0 -> 1, 1 -> 0)
+# This closes the year apporaching from the left 
+
+last_rows = last_rows.with_columns(    
     pl.col("Timestamp").dt.truncate("1y").dt.offset_by("1y").dt.offset_by("-1s").alias("Timestamp"),  # Floor timestamp to start of year
-    pl.lit("OK").alias("Message")
+    pl.lit("Last seen").alias("Message")
     )
 
+# ---- 3) Id first row per year per wt
+first_rows = tstates.group_by("Year_wt").first().drop("Status").sort("Year").rename({"State": "old State"})
+
+# Create new rows with the State last seen last year
+first_rows = first_rows.join(
+    last_rows.select(["Year_wt", "State"]),
+    on="Year_wt",
+    how="left"
+).with_columns(
+    pl.col("Timestamp").dt.truncate("1y").alias("Timestamp"),
+    pl.lit("Like last seen last year").alias("Message")
+)
+
+first_rows = first_rows.drop("old State")
+
+# Create new df last plus firsts
+first_rows = first_rows.select(last_rows.columns)
 new_rows = pl.concat([first_rows, last_rows])
 
 new_rows = new_rows.with_columns(    
