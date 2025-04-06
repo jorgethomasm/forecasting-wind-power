@@ -307,11 +307,13 @@ for year in years:
     )
     # Update facet labels
     fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1], 
-                                              textangle=0, 
-                                              xanchor='left', 
-                                              x=-0.05))
+                                               textangle=0, 
+                                               xanchor='left', 
+                                               x=-0.05))
     fig.update_annotations(font_size=10)
     pl_time_state.append(fig)
+
+# End of loop
 ```
 
 ::: {.panel-tabset}
@@ -352,13 +354,35 @@ pl_time_state[4].show()
 pl_time_state[5].show()
 ```
 
-# 2022
+## 2022
 
 ```{python}
 pl_time_state[6].show()
 ```
 
 :::
+
+```{python}
+
+tstates = tstates.with_columns(
+    (pl.col("Timestamp").diff().dt.total_seconds()/3_600).alias("Duration")
+)
+
+tstates = tstates.with_columns(
+    pl.when(pl.col("Duration") <= 0)
+    .then(None)
+    .otherwise(pl.col("Duration"))
+    .alias("Duration")    
+)
+
+ttf = tstates.filter(pl.col("State") == 0).rename({"Duration": "TTF"})
+ttr = tstates.filter(pl.col("State") == 1).rename({"Duration": "TTR"})
+
+
+
+
+```
+
 
 ```{python}
 
