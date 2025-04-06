@@ -126,48 +126,30 @@ tstates = tstates.drop_nulls()
 
 # ---- 1) Id  last row per year per wt
 
-# TODO: wt_ year? 
-
-last_rows = tstates.group_by("Year_wt").last().drop("Status").sort("Year")
+last_rows = tstates.group_by("Year_wt").last().sort("Year")
 
 # ---- 2) Create new rows with the same (last seen) State
 
 # This closes the year apporaching from the left 
 
 last_rows = last_rows.with_columns(    
-    pl.col("Timestamp").dt.truncate("1y").dt.offset_by("1y").dt.offset_by("-1s").alias("Timestamp"),  # Floor timestamp to start of year
+    pl.col("Timestamp").dt.truncate("1y").dt.offset_by("1y").dt.offset_by("-1s").alias("Timestamp"),  # Ceil timestamp
     pl.lit("Last seen").alias("Message")
     )
 
-# ---- 3) Id first row per year per wt
-first_rows = tstates.group_by("Year_wt").first().drop("Status").sort("Year").rename({"State": "old State"})
+# ---- 3) Create first row df from last_rows df
 
-# Create new rows with the State last seen last year
-first_rows = first_rows.join(
-    last_rows.select(["Year_wt", "State"]),
-    on="Year_wt",
-    how="left"
-).with_columns(
-    pl.col("Timestamp").dt.truncate("1y").alias("Timestamp"),
-    pl.lit("Like last seen last year").alias("Message")
+first_rows = last_rows.with_columns(
+     pl.col("Timestamp").dt.offset_by('1s').alias("Timestamp")
 )
 
-first_rows = first_rows.drop("old State")
+# ---- 4) df with new rows to be added
 
-# Create new df last plus firsts
-first_rows = first_rows.select(last_rows.columns)
 new_rows = pl.concat([first_rows, last_rows])
 
-new_rows = new_rows.with_columns(    
-    pl.when(pl.col("State") == 1)
-      .then(pl.lit("Start"))
-      .otherwise(pl.lit("Stop"))
-      .alias("Status")
-      )
+# ---- 5) Add new rows to close tstates
 
-# Ensure columns match before concatenation
-columns = tstates.columns
-new_rows = new_rows.select(columns)
+new_rows = new_rows.select(tstates.columns)  # reorder rows
 
 tstates = pl.concat([tstates, new_rows]).sort(["Year_wt", "Timestamp"])
 
