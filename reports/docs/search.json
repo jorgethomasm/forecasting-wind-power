@@ -7,17 +7,24 @@
     "text": "“Kelmarsh comprises six 2.05MW Senvion MM92 turbines. The Project was acquired from EON in December 2014 and was constructed in joint venture with Santander using balance sheet finance. Construction was completed in April 2016. It is now owned by Cubico Investments.”\n\nhttps://www.blue-energyco.com/our-projects/kelmarsh/\n\n\n\n\n\n\n\n\n\n(a) Kelmarsh Wind Farm\n\n\n\n\n\n\n\n(b) Senvion MM92 turbine\n\n\n\n\n\n\nFigure 1: Kelmarsh Wind Farm is located near Haselbach, Northamptonshire, UK."
   },
   {
-    "objectID": "Kelmarsh_reliability_eval.html#project-overview",
-    "href": "Kelmarsh_reliability_eval.html#project-overview",
+    "objectID": "Kelmarsh_reliability_eval.html#kelmarsh-wind-farm",
+    "href": "Kelmarsh_reliability_eval.html#kelmarsh-wind-farm",
     "title": "SCADA-Based Reliability Evaluation",
     "section": "",
     "text": "“Kelmarsh comprises six 2.05MW Senvion MM92 turbines. The Project was acquired from EON in December 2014 and was constructed in joint venture with Santander using balance sheet finance. Construction was completed in April 2016. It is now owned by Cubico Investments.”\n\nhttps://www.blue-energyco.com/our-projects/kelmarsh/\n\n\n\n\n\n\n\n\n\n(a) Kelmarsh Wind Farm\n\n\n\n\n\n\n\n(b) Senvion MM92 turbine\n\n\n\n\n\n\nFigure 1: Kelmarsh Wind Farm is located near Haselbach, Northamptonshire, UK."
   },
   {
-    "objectID": "Kelmarsh_reliability_eval.html#time-state-diagram-for-kelmarsh-wind-turbines",
-    "href": "Kelmarsh_reliability_eval.html#time-state-diagram-for-kelmarsh-wind-turbines",
+    "objectID": "Kelmarsh_reliability_eval.html#wind-turbines-time-state-diagram",
+    "href": "Kelmarsh_reliability_eval.html#wind-turbines-time-state-diagram",
     "title": "SCADA-Based Reliability Evaluation",
-    "section": "Time / State Diagram for Kelmarsh Wind Turbines",
-    "text": "Time / State Diagram for Kelmarsh Wind Turbines\n\n2016201720182019202020212022"
+    "section": "Wind Turbines Time / State Diagram",
+    "text": "Wind Turbines Time / State Diagram\n\n2016201720182019202020212022"
+  },
+  {
+    "objectID": "Kelmarsh_reliability_eval.html#reliability-parameters",
+    "href": "Kelmarsh_reliability_eval.html#reliability-parameters",
+    "title": "SCADA-Based Reliability Evaluation",
+    "section": "Reliability Parameters",
+    "text": "Reliability Parameters\n\n\n\n\n\n\n\n\nSix Wind Turbines - Model Senvion MM92\n\n\nReliability Evaluation (2016 - 2022)\n\n\n\nForced Outages\nFailure Rate [h−1]\nMTTF [h]\nOut-of-service\nProbabilities (P0, P1)\n\n\nMTTR [h]\nTotal Time [h]\nUnavailability (FOR)\nAvailability\n\n\n\n\n2016\n\n\nT01\n32\n0.00379\n248.49\n15.66\n501.01\n0.05927\n0.94073\n\n\nT02\n53\n0.00627\n156.47\n2.89\n153.18\n0.01814\n0.98186\n\n\nT03\n30\n0.00355\n265.50\n5.96\n178.92\n0.02197\n0.97803\n\n\nT04\n18\n0.00213\n439.29\n2.33\n41.90\n0.00527\n0.99473\n\n\nT05\n17\n0.00201\n457.36\n25.98\n441.71\n0.05376\n0.94624\n\n\nT06\n29\n0.00343\n266.34\n6.33\n183.64\n0.02322\n0.97678\n\n\n2017\n\n\nT01\n24\n0.00274\n348.69\n1.78\n42.66\n0.00507\n0.99493\n\n\nT02\n17\n0.00194\n486.26\n0.43\n7.28\n0.00088\n0.99912\n\n\nT03\n9\n0.00103\n875.63\n0.41\n3.73\n0.00047\n0.99953\n\n\nT04\n21\n0.00240\n397.92\n0.28\n5.85\n0.00070\n0.99930\n\n\nT05\n14\n0.00160\n583.60\n0.43\n6.07\n0.00074\n0.99926\n\n\nT06\n37\n0.00422\n221.54\n3.24\n119.79\n0.01440\n0.98560\n\n\n2018\n\n\nT01\n12\n0.00137\n673.55\n0.32\n3.84\n0.00047\n0.99953\n\n\nT02\n19\n0.00217\n437.37\n0.66\n12.56\n0.00151\n0.99849\n\n\nT03\n24\n0.00274\n349.98\n0.44\n10.45\n0.00124\n0.99876\n\n\nT04\n11\n0.00126\n729.18\n0.90\n9.87\n0.00123\n0.99877\n\n\nT05\n11\n0.00126\n726.26\n4.08\n44.86\n0.00558\n0.99442\n\n\nT06\n19\n0.00217\n416.82\n0.35\n6.71\n0.00085\n0.99915\n\n\n2019\n\n\nT01\n15\n0.00171\n546.96\n0.58\n8.63\n0.00105\n0.99895\n\n\nT02\n17\n0.00194\n485.38\n1.36\n23.18\n0.00280\n0.99720\n\n\nT03\n10\n0.00114\n794.45\n2.11\n21.06\n0.00264\n0.99736\n\n\nT04\n17\n0.00194\n486.21\n0.48\n8.20\n0.00099\n0.99901\n\n\nT05\n8\n0.00091\n972.48\n0.96\n7.66\n0.00098\n0.99902\n\n\nT06\n9\n0.00103\n791.37\n6.11\n54.96\n0.00766\n0.99234\n\n\n2020\n\n\nT01\n21\n0.00239\n397.40\n1.97\n41.31\n0.00493\n0.99507\n\n\nT02\n25\n0.00285\n337.12\n0.76\n18.92\n0.00224\n0.99776\n\n\nT03\n14\n0.00159\n580.58\n5.37\n75.25\n0.00917\n0.99083\n\n\nT04\n30\n0.00342\n281.19\n2.23\n66.99\n0.00788\n0.99212\n\n\nT05\n16\n0.00182\n515.19\n1.61\n25.69\n0.00311\n0.99689\n\n\nT06\n24\n0.00273\n337.27\n0.62\n14.88\n0.00184\n0.99816\n\n\n2021\n\n\nT01\n24\n0.00274\n345.82\n4.77\n114.53\n0.01361\n0.98639\n\n\nT02\n14\n0.00160\n583.82\n0.19\n2.71\n0.00033\n0.99967\n\n\nT03\n12\n0.00137\n673.70\n0.16\n1.95\n0.00024\n0.99976\n\n\nT04\n10\n0.00114\n796.26\n0.12\n1.15\n0.00014\n0.99986\n\n\nT05\n27\n0.00308\n302.35\n10.89\n294.06\n0.03477\n0.96523\n\n\nT06\n13\n0.00148\n576.61\n8.53\n110.83\n0.01457\n0.98543\n\n\n2022\n\n\nT01\n85\n0.00970\n101.61\n0.26\n21.94\n0.00253\n0.99747\n\n\nT02\n33\n0.00377\n255.89\n1.81\n59.77\n0.00703\n0.99297\n\n\nT03\n7\n0.00080\n1,094.54\n0.53\n3.71\n0.00048\n0.99952\n\n\nT04\n9\n0.00103\n869.82\n6.86\n61.75\n0.00783\n0.99217\n\n\nT05\n34\n0.00388\n250.05\n0.25\n8.37\n0.00098\n0.99902\n\n\nT06\n18\n0.00205\n438.48\n23.83\n428.91\n0.05154\n0.94846\n\n\n\nNote: Forced Outages (IEC) only."
   }
 ]

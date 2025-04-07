@@ -1,6 +1,6 @@
 ---
 title: "SCADA-Based Reliability Evaluation"
-subtitle: "Kelmarsh Wind Farm - 12.5 MW"
+subtitle: "Kelmarsh Wind Farm - 12.3 MW"
 author: "Jorge A. Thomas"
 date: April.2025
 format:    
@@ -11,7 +11,7 @@ format:
       df-print: tibble
       code-summary: "Show the code"
       toc: true
-      toc-depth: 3
+      toc-depth: 2
       grid: 
         margin-width: 350px      
 execute: 
@@ -20,11 +20,13 @@ reference-location: margin
 citation-location: document
 ---
 
-## Project Overview
+## Kelmarsh Wind Farm
+
+### Project Overview
 
 "Kelmarsh comprises six 2.05MW Senvion MM92 turbines. The Project was acquired from EON in December 2014 and was constructed in joint venture with Santander using balance sheet finance. Construction was completed in April 2016. It is now owned by Cubico Investments."
 
--   https://www.blue-energyco.com/our-projects/kelmarsh/
+- [https://www.blue-energyco.com/our-projects/kelmarsh/](https://www.blue-energyco.com/our-projects/kelmarsh/)  
 
 ::: {#fig-intro layout-ncol="2"}
 ![(a) Kelmarsh Wind Farm](../imgs/Kelmarsh_wind_project_blue-energyco.jpg){width="98%"}
@@ -257,7 +259,7 @@ fig.show()
 
 ```
 
-## Time / State Diagram for Kelmarsh Wind Turbines
+## Wind Turbines Time / State Diagram
 
 ```{python}
 #| label: Time-State-Plot-By-Year
@@ -422,7 +424,7 @@ ttr_agg_year = (
     ttr.group_by(["Year",  "Turbine"])
     .agg(
         pl.len().alias("Forced Outages"),                
-        pl.sum("TTR").alias("Total Repair Time"),
+        pl.sum("TTR").alias("TTR"),
         pl.mean("TTR").alias("MTTR")                      
         )    
     .sort(["Year",  "Turbine"])      
@@ -432,7 +434,7 @@ ttr_agg_year = (
 
 ```{python}
 #| label: Reliablity-parameters
-#| eval: false
+#| eval: true
 
 rel_param = ttf_agg_year.join(ttr_agg_year, on=["Year",  "Turbine"], how="left")
 rel_param = rel_param.join(year_durations, on="Year")
@@ -443,7 +445,7 @@ rel_param = rel_param.with_columns(
 )
 
 rel_param = rel_param.with_columns(
-    (pl.col("FOR")*pl.col("duration_hours")).alias("Total Outage Time"),
+    #(pl.col("FOR")*pl.col("duration_hours")).alias("Total Outage Time"),
     (1-pl.col("FOR")).alias("Availability")
 
 )
@@ -452,28 +454,41 @@ rel_param = rel_param.drop(["Time to Failure", "State delete", "year_end" , "yea
 
 ```
 
+## Reliability Parameters
 
 ```{python}
 import polars.selectors as cs
-from great_tables import GT, md
+from great_tables import GT, md, style, loc
 
 gt_reliability = (
     GT(rel_param,
-    groupname_col = "Year")
-    .tab_header(
-        title="Kelmarsh Reliability Parameters",
-        subtitle="Labeled forced outages (IEC) only from SCADA (2016-2022)"
+    rowname_col = "Turbine",
+    groupname_col="Year"
     )
-    #.tab_spanner(label="Time", columns=["Year", "Month", "Day"])
-    #.tab_spanner(label="out-of-service", columns=["FOR", "MTTR", "Total Repair"])
+    .opt_vertical_padding(scale=0.6)
+    .opt_stylize(style=1)
+    .tab_style(
+        style=style.text(weight="bold"), 
+        locations=loc.body(columns="Year")
+    )
+    .tab_header(
+        title=md("Six Wind Turbines - Model Senvion MM92"),
+        subtitle=md("Reliability Evaluation (2016 - 2022)")
+    )
+    .tab_source_note(source_note="Note: Forced Outages (IEC) only.")    
+    .fmt_number(columns=["MTTF", "MTTR", "TTR"], decimals=2)
+    .fmt_number(columns=["Failure Rate","FOR", "Availability"], decimals=5)    
+    .tab_spanner(label="Probabilities ({{P_0}}, {{P_1}})", columns=["FOR", "Availability"])
+    .tab_spanner(label="Out-of-service", columns=["MTTR", "TTR"])
     .cols_move_to_start(columns=["Year", "Turbine", "Forced Outages", "Failure Rate"])
-    # .cols_label(
-    #      Ozone="Failure Rate",
-    # #     Solar_R=html("Solar R.,<br>cal/m<sup>2</sup>"),
-    # #     Wind=html("Wind,<br>mph"),
-    # #     Temp=html("Temp,<br>&deg;F"),
-    # # )
-    # )
+    .cols_label(
+        #{"Forced Outages": "Outages"},
+        {"Failure Rate": "Failure Rate [{{h^-1}}]"},        
+        MTTF = "MTTF [{{h}}]",
+        MTTR = "MTTR [{{h}}]",
+        TTR = "Total Time [{{h}}]",
+        FOR="Unavailability (FOR)"    
+    )
 )
 
 gt_reliability
