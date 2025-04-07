@@ -42,6 +42,9 @@ Kelmarsh Wind Farm is located near Haselbach, Northamptonshire, UK.
 # https://en.wind-turbine-models.com/turbines/889-senvion-mm92
 # https://www.thewindpower.net/windfarm_en_17507_kelmarsh.php
 
+# Plumley, C. (2022). Penmanshiel wind farm data (0.1.0) [Kelmarsh dataset]
+# Cubico Sustainable Investments
+
 from pathlib import Path
 import duckdb
 import polars as pl
@@ -394,7 +397,7 @@ year_durations = year_durations.with_columns(
     (pl.col("duration_sec")/3_600).round(2).alias("duration_hours")
 ).drop("duration_sec")
 
-tstates_dur = tstates_dur.drop_nulls()
+tstates_dur = tstates_dur.rename({"wt": "Turbine"}).drop_nulls()
 ```
 
 ```{python}
@@ -403,29 +406,26 @@ tstates_dur = tstates_dur.drop_nulls()
 ttf = tstates_dur.filter(pl.col("State") == 1).rename({"Duration": "TTF"})
 ttf_agg_year = (
     # ttf.group_by("Year_wt")
-    ttf.group_by(["Year",  "wt"])
+    ttf.group_by(["Year",  "Turbine"])
     .agg(
-        pl.len().alias("State"),                
-        pl.sum("TTF").alias("Total TTF [h]"),
-        pl.mean("TTF").alias("MTTF [h]")                      
+        pl.len().alias("State delete"),                
+        pl.sum("TTF").alias("Time to Failure"),
+        pl.mean("TTF").alias("MTTF")                      
         )
     # .rename({"wt": "Turbine"})
     #.sort("Year_wt")     
-    .sort(["Year",  "wt"])     
+    .sort(["Year",  "Turbine"])     
     )
 
 ttr = tstates_dur.filter(pl.col("State") == 0).rename({"Duration": "TTR"})
-ttr_agg_year = (
-    # ttr.group_by("Year_wt")
-    ttr.group_by(["Year",  "wt"])
+ttr_agg_year = (    
+    ttr.group_by(["Year",  "Turbine"])
     .agg(
-        pl.len().alias("State"),                
-        pl.sum("TTR").alias("Total TTR [h]"),
-        pl.mean("TTR").alias("MTTR [h]")                      
-        )
-    # .rename({"wt": "Turbine"})
-    # .sort("Year_wt")   
-    .sort(["Year",  "wt"])      
+        pl.len().alias("Forced Outages"),                
+        pl.sum("TTR").alias("Total Repair Time"),
+        pl.mean("TTR").alias("MTTR")                      
+        )    
+    .sort(["Year",  "Turbine"])      
     )
 ```
 
@@ -434,37 +434,20 @@ ttr_agg_year = (
 #| label: Reliablity-parameters
 #| eval: false
 
-rel_param = ttf_agg_year.join(ttr_agg_year, on=["Year",  "wt"], how="left")
-rel_param_ = rel_param.join(year_durations, on="Year")
+rel_param = ttf_agg_year.join(ttr_agg_year, on=["Year",  "Turbine"], how="left")
+rel_param = rel_param.join(year_durations, on="Year")
 
-foutages_agg_year = (
-    ttr.group_by("Year_wt")
-    .agg(
-        pl.len().alias("State"),                
-        pl.sum("TTR").alias("Total TTR [h]"),
-        pl.mean("TTR").alias("MTTR [h]")                      
-        )
-    # .rename({"wt": "Turbine"})
-    .sort("Year_wt")     
-    )
+rel_param = rel_param.with_columns(
+    (pl.col("Forced Outages")/pl.col("duration_hours")).alias("Failure Rate"),
+    (pl.col("MTTR")/(pl.col("MTTF") + pl.col("MTTR"))).alias("FOR"),    
+)
 
-#TODO Decdir columna State
+rel_param = rel_param.with_columns(
+    (pl.col("FOR")*pl.col("duration_hours")).alias("Total Outage Hours"),
+    (1-pl.col("FOR")).alias("Availability")
 
-# foutages_agg_year = (
-#     ttf.group_by("Year_wt")
-#     .agg(
-#         pl.len().alias("State"),                
-#         pl.sum("TTR").alias("Total TTR [h]"),
-#         pl.mean("TTR").alias("MTTR [h]")                      
-#         )
-#     .rename({"wt": "Turbine"})
-#     .sort("Year_wt") 
-#     .with_columns(
-#         (pl.col("MTTR").dt.total_seconds()/3_600 + pl.col("MTTF").dt.total_seconds()/3_600).alias("MTBF"),
-#         #(pl.col("MTTR").dt.total_hours() + pl.col("MTTF").dt.total_hours()).alias("MTBF hours"),
-#         #(1/pl.col("MTTF").dt.total_hours()).alias("FOR hours"),
-#         (1/(pl.col("MTTF").dt.total_seconds()/3_600)).alias("Failure Rate")
-#         )
-#     )
+)
+
+rel_param = rel_param.drop(["State delete", "year_end" , "year_start" , "duration_hours"])
 
 ```
