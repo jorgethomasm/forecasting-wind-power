@@ -368,7 +368,7 @@ pl_time_state[6].show()
 :::
 
 ```{python}
-#| label: ttf-ttf
+#| label: calc-durations
 #| eval: true
 
 tstates_dur = tstates.with_columns(
@@ -391,28 +391,51 @@ year_durations = tstates.group_by("Year").agg(
 ).sort("Year")
 
 year_durations = year_durations.with_columns(
-
     (pl.col("duration_sec")/3_600).round(2).alias("duration_hours")
+).drop("duration_sec")
 
-
-)
-
-# tstates_dur = tstates_dur.drop_nulls()
-
+tstates_dur = tstates_dur.drop_nulls()
 ```
 
 ```{python}
-
-# TODO: Check "last seen" durations in ttr
+#label: calc-ttf-ttr
 
 ttf = tstates_dur.filter(pl.col("State") == 1).rename({"Duration": "TTF"})
-ttr = tstates_dur.filter(pl.col("State") == 0).rename({"Duration": "TTR"})
+ttf_agg_year = (
+    # ttf.group_by("Year_wt")
+    ttf.group_by(["Year",  "wt"])
+    .agg(
+        pl.len().alias("State"),                
+        pl.sum("TTF").alias("Total TTF [h]"),
+        pl.mean("TTF").alias("MTTF [h]")                      
+        )
+    # .rename({"wt": "Turbine"})
+    #.sort("Year_wt")     
+    .sort(["Year",  "wt"])     
+    )
 
+ttr = tstates_dur.filter(pl.col("State") == 0).rename({"Duration": "TTR"})
+ttr_agg_year = (
+    # ttr.group_by("Year_wt")
+    ttr.group_by(["Year",  "wt"])
+    .agg(
+        pl.len().alias("State"),                
+        pl.sum("TTR").alias("Total TTR [h]"),
+        pl.mean("TTR").alias("MTTR [h]")                      
+        )
+    # .rename({"wt": "Turbine"})
+    # .sort("Year_wt")   
+    .sort(["Year",  "wt"])      
+    )
 ```
+
 
 ```{python}
 #| label: Reliablity-parameters
 #| eval: false
+
+rel_param = ttf_agg_year.join(ttr_agg_year, on=["Year",  "wt"], how="left")
+rel_param_ = rel_param.join(year_durations, on="Year")
 
 foutages_agg_year = (
     ttr.group_by("Year_wt")
@@ -425,7 +448,7 @@ foutages_agg_year = (
     .sort("Year_wt")     
     )
 
-
+#TODO Decdir columna State
 
 # foutages_agg_year = (
 #     ttf.group_by("Year_wt")
