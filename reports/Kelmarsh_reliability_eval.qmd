@@ -443,11 +443,41 @@ rel_param = rel_param.with_columns(
 )
 
 rel_param = rel_param.with_columns(
-    (pl.col("FOR")*pl.col("duration_hours")).alias("Total Outage Hours"),
+    (pl.col("FOR")*pl.col("duration_hours")).alias("Total Outage Time"),
     (1-pl.col("FOR")).alias("Availability")
 
 )
 
-rel_param = rel_param.drop(["State delete", "year_end" , "year_start" , "duration_hours"])
+rel_param = rel_param.drop(["Time to Failure", "State delete", "year_end" , "year_start" , "duration_hours"])
+
+```
+
+
+```{python}
+import polars.selectors as cs
+from great_tables import GT, md
+
+gt_reliability = (
+    GT(rel_param,
+    groupname_col = "Year")
+    .tab_header(
+        title="Kelmarsh Reliability Parameters",
+        subtitle="Labeled forced outages (IEC) only from SCADA (2016-2022)"
+    )
+    #.tab_spanner(label="Time", columns=["Year", "Month", "Day"])
+    #.tab_spanner(label="out-of-service", columns=["FOR", "MTTR", "Total Repair"])
+    .cols_move_to_start(columns=["Year", "Turbine", "Forced Outages", "Failure Rate"])
+    # .cols_label(
+    #      Ozone="Failure Rate",
+    # #     Solar_R=html("Solar R.,<br>cal/m<sup>2</sup>"),
+    # #     Wind=html("Wind,<br>mph"),
+    # #     Temp=html("Temp,<br>&deg;F"),
+    # # )
+    # )
+)
+
+gt_reliability
+
+
 
 ```
