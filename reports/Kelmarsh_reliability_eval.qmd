@@ -164,15 +164,12 @@ new_rows = new_rows.select(tstates.columns)  # reorder rows
 tstates = pl.concat([tstates, new_rows]).sort(["Year_wt", "Timestamp"])
 
 
-```
-
-```{python}
-
 # ---- 6) Drop columns Year > 2022 2023 
 
 tstates = tstates.filter(pl.col("Year") <= last_year)
 
 ```
+
 
 ```{python}
 #| label: Find-Missing-Values
@@ -375,7 +372,7 @@ pl_time_state[6].show()
 #| eval: true
 
 tstates_dur = tstates.with_columns(
-    (pl.col("Timestamp").diff().dt.total_seconds()/3_600).alias("Duration")
+    (pl.col("Timestamp").diff().dt.total_seconds()/3_600).alias("Duration").shift(-1)
 )
 
 tstates_dur = tstates_dur.with_columns(
@@ -385,14 +382,33 @@ tstates_dur = tstates_dur.with_columns(
     .alias("Duration")    
 )
 
+# Get each year duration
+year_durations = tstates.group_by("Year").agg(
+    pl.col("Timestamp").max().alias("year_end"),
+    pl.col("Timestamp").min().alias("year_start")
+).with_columns(
+    (pl.col("year_end") - pl.col("year_start")).dt.total_seconds().alias("duration_sec")
+).sort("Year")
 
-# TODO: Check "last seen" durations in ttr
+year_durations = year_durations.with_columns(
 
-ttf = tstates_dur.filter(pl.col("State") == 0).rename({"Duration": "TTF"})
-ttr = tstates_dur.filter(pl.col("State") == 1).rename({"Duration": "TTR"})
+    (pl.col("duration_sec")/3_600).round(2).alias("duration_hours")
+
+
+)
+
+# tstates_dur = tstates_dur.drop_nulls()
 
 ```
 
+```{python}
+
+# TODO: Check "last seen" durations in ttr
+
+ttf = tstates_dur.filter(pl.col("State") == 1).rename({"Duration": "TTF"})
+ttr = tstates_dur.filter(pl.col("State") == 0).rename({"Duration": "TTR"})
+
+```
 
 ```{python}
 #| label: Reliablity-parameters
