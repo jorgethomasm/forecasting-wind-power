@@ -118,7 +118,7 @@ foutages.write_parquet(f"{fpath_online}/{"Kelmarsh_Turbines_ForcedOutages_201601
 #| label: read-filtered-fo
 #| eval: true
 
-foutages = pl.read_parquet(f"{fpath_online}/{"Kelmarsh_Turbines_ForcedOutages_20160114_20230109_n892_cols12.parquet"}")
+foutages = pl.read_parquet(f"{fpath_online}{"Kelmarsh_Turbines_ForcedOutages_20160114_20230109_n892_cols12.parquet"}")
 
 # foutages
 
