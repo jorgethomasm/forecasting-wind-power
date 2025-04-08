@@ -400,7 +400,9 @@ year_durations = year_durations.with_columns(
 ).drop("duration_sec")
 
 tstates_dur = tstates_dur.rename({"wt": "Turbine"}).drop_nulls()
+
 ```
+
 
 ```{python}
 #label: calc-ttf-ttr
@@ -433,11 +435,62 @@ ttr_agg_year = (
 
 
 ```{python}
+#label: calc-outages-month
+
+# monthly_outages = pl.sql("""
+#     SELECT 
+#         Year,
+#         Turbine,
+#         strftime('%m', Timestamp) AS "Month",
+#         COUNT(*) AS "Outages"
+#     FROM ttr
+#     GROUP BY Year, Turbine, Month
+#     ORDER BY Year, Turbine, Month
+# """).collect()
+
+
+monthly_outages = ttr.with_columns(
+    pl.col("Timestamp").dt.month().alias("Month")
+)
+
+monthly_outages = (
+    monthly_outages.group_by(["Year", "Turbine", "Month"])
+    .agg(
+        pl.len().alias("Outages")
+        )
+        .sort(["Year",  "Turbine", "Month"])
+        )
+
+
+monthly_outages_piv = monthly_outages.pivot(
+        values="Outages",
+        index=["Year", "Turbine"],
+        on="Month",
+        aggregate_function="first"
+    ).fill_null(strategy="zero")
+
+monthly_outages_piv = monthly_outages_piv.select(
+    ["Year", "Turbine", "1", "2",  "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"]).sort("Year", "Turbine")
+
+
+monthly_outages_ = monthly_outages_piv.with_columns(
+    pl.concat_list(pl.all().exclude("Year",  "Turbine")).alias("Monthly_Outages")
+    ).select(["Year",  "Turbine", "Monthly_Outages"])
+
+
+
+# test = ttf_agg_year.join(monthly_outages, on=["Year",  "Turbine"], how="left")
+```
+
+
+
+```{python}
 #| label: Reliablity-parameters
 #| eval: true
 
 rel_param = ttf_agg_year.join(ttr_agg_year, on=["Year",  "Turbine"], how="left")
 rel_param = rel_param.join(year_durations, on="Year")
+rel_param = rel_param.join(monthly_outages_, on=["Year", "Turbine"])
 
 rel_param = rel_param.with_columns(
     (pl.col("Forced Outages")/pl.col("duration_hours")).alias("Failure Rate"),
@@ -465,7 +518,8 @@ gt_reliability = (
     rowname_col = "Turbine",
     groupname_col="Year"
     )
-    .opt_vertical_padding(scale=0.6)
+    .opt_vertical_padding(scale=0.5)
+    .opt_horizontal_padding(scale=0.6)
     .opt_stylize(style=1)
     .tab_style(
         style=style.text(weight="bold"), 
