@@ -2,7 +2,7 @@
 title: "SCADA-Based Reliability Evaluation"
 subtitle: "Kelmarsh Wind Farm - 12.3 MW"
 author: "Jorge A. Thomas"
-date: April.2025
+date: 8.April.2025
 format:    
     html:
       theme: default
@@ -18,6 +18,8 @@ execute:
   echo: false
 reference-location: margin 
 citation-location: document
+bibliography: references.bib
+nocite: '@*'
 ---
 
 ## Kelmarsh Wind Farm
@@ -259,8 +261,6 @@ fig.show()
 
 ```
 
-## Wind Turbines Time / State Diagram
-
 ```{python}
 #| label: Time-State-Plot-By-Year
 
@@ -326,51 +326,6 @@ for year in years:
 # End of loop
 ```
 
-::: {.panel-tabset}
-
-## 2016
-
-```{python}
-pl_time_state[0].show()
-```
-
-## 2017
-
-```{python}
-pl_time_state[1].show()
-```
-
-## 2018
-
-```{python}
-pl_time_state[2].show()
-```
-
-## 2019
-
-```{python}
-pl_time_state[3].show()
-```
-
-## 2020
-
-```{python}
-pl_time_state[4].show()
-```
-
-## 2021
-
-```{python}
-pl_time_state[5].show()
-```
-
-## 2022
-
-```{python}
-pl_time_state[6].show()
-```
-
-:::
 
 ```{python}
 #| label: calc-durations
@@ -448,7 +403,6 @@ ttr_agg_year = (
 #     ORDER BY Year, Turbine, Month
 # """).collect()
 
-
 monthly_outages = ttr.with_columns(
     pl.col("Timestamp").dt.month().alias("Month")
 )
@@ -461,7 +415,6 @@ monthly_outages = (
         .sort(["Year",  "Turbine", "Month"])
         )
 
-
 monthly_outages_piv = monthly_outages.pivot(
         values="Outages",
         index=["Year", "Turbine"],
@@ -472,16 +425,10 @@ monthly_outages_piv = monthly_outages.pivot(
 monthly_outages_piv = monthly_outages_piv.select(
     ["Year", "Turbine", "1", "2",  "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"]).sort("Year", "Turbine")
 
-
 monthly_outages_ = monthly_outages_piv.with_columns(
     pl.concat_list(pl.all().exclude("Year",  "Turbine")).alias("Monthly_Outages")
     ).select(["Year",  "Turbine", "Monthly_Outages"])
-
-
-
-# test = ttf_agg_year.join(monthly_outages, on=["Year",  "Turbine"], how="left")
 ```
-
 
 
 ```{python}
@@ -503,13 +450,17 @@ rel_param = rel_param.with_columns(
 
 )
 
-rel_param = rel_param.drop(["Time to Failure", "State delete", "year_end" , "year_start" , "duration_hours"])
+rel_param = rel_param.drop(["State delete", "year_end" , "year_start" , "duration_hours"])
 
+
+rel_param = rel_param.with_columns(
+    pl.lit("wind-turbin-icon-10.jpg").alias("icon")
+
+)
 ```
 
-## Reliability Parameters
-
 ```{python}
+#label: generate-table
 import polars.selectors as cs
 from great_tables import GT, md, style, loc
 
@@ -519,7 +470,7 @@ gt_reliability = (
     groupname_col="Year"
     )
     .opt_vertical_padding(scale=0.5)
-    .opt_horizontal_padding(scale=0.6)
+    .opt_horizontal_padding(scale=1)
     .opt_stylize(style=1)
     .tab_style(
         style=style.text(weight="bold"), 
@@ -529,24 +480,106 @@ gt_reliability = (
         title=md("Six Wind Turbines - Model Senvion MM92"),
         subtitle=md("Reliability Evaluation (2016 - 2022)")
     )
-    .tab_source_note(source_note="Note: Forced Outages (IEC) only.")    
-    .fmt_number(columns=["MTTF", "MTTR", "TTR"], decimals=2)
-    .fmt_number(columns=["Failure Rate","FOR", "Availability"], decimals=5)    
-    .tab_spanner(label="Probabilities ({{P_0}}, {{P_1}})", columns=["FOR", "Availability"])
-    .tab_spanner(label="Out-of-service", columns=["MTTR", "TTR"])
-    .cols_move_to_start(columns=["Year", "Turbine", "Forced Outages", "Failure Rate"])
-    .cols_label(
-        #{"Forced Outages": "Outages"},
-        {"Failure Rate": "Failure Rate [{{h^-1}}]"},        
-        MTTF = "MTTF [{{h}}]",
-        MTTR = "MTTR [{{h}}]",
-        TTR = "Total Time [{{h}}]",
-        FOR="Unavailability (FOR)"    
+    .tab_source_note(source_note="* Forced Outages (IEC) only, scheduled stops not included.")    
+    .fmt_number(
+        columns=["MTTF", "MTTR", "TTR", "Time to Failure"],
+        decimals=2
+    )
+    .fmt_image(
+        columns="icon",
+        path="../imgs/"
+    )
+    .fmt_number(
+        columns=["Failure Rate", "FOR", "Availability"],
+        decimals=5
+    )
+    .fmt_nanoplot(
+        columns="Monthly_Outages",
+        plot_type="bar"
+    )
+    .tab_spanner(
+        label="Probabilities",
+        columns=["FOR", "Availability"]
+    )
+    .tab_spanner(
+        label="Out-of-service",
+        columns=["MTTR", "TTR"]
+    )
+    .tab_spanner(
+        label="Ready *",
+        columns=["MTTF", "Time to Failure"]
+    )
+    .tab_spanner(
+        label="Forced Outages",
+        columns=["Forced Outages", "Monthly_Outages"]
+    )
+    .cols_move_to_start(
+        columns=["Year", "icon", "Turbine", "Forced Outages", "Monthly_Outages", "Failure Rate", "MTTF",  "Time to Failure"]
+    )
+    .cols_label(        
+        {"Forced Outages": "Total",
+        "Monthly_Outages": "Monthly",
+        "Failure Rate": "Failure Rate [{{h^-1}}]",
+        "Time to Failure": "TTF [h]"},        
+        icon =  "Turbine",
+        MTTF = "MTTF [h]",
+        MTTR = "MTTR [h]",
+        TTR = "TTR [h]"
     )
 )
 
-gt_reliability
-
-
-
 ```
+
+## Reliability Parameters
+
+```{python}
+gt_reliability
+```
+
+## Time / State Diagrams
+
+::: {.panel-tabset}
+
+## 2016
+
+```{python}
+pl_time_state[0].show()
+```
+
+## 2017
+
+```{python}
+pl_time_state[1].show()
+```
+
+## 2018
+
+```{python}
+pl_time_state[2].show()
+```
+
+## 2019
+
+```{python}
+pl_time_state[3].show()
+```
+
+## 2020
+
+```{python}
+pl_time_state[4].show()
+```
+
+## 2021
+
+```{python}
+pl_time_state[5].show()
+```
+
+## 2022
+
+```{python}
+pl_time_state[6].show()
+```
+
+:::
