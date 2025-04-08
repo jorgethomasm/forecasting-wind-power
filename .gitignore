@@ -10,8 +10,9 @@ wheels/
 .venv
 
 # data folder
-/data
-/imgs
+/data/raw
+/data/interim
+/data/processed
 
 # notebook
 Windpark-Silistea-1.qmd

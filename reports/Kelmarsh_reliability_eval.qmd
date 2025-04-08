@@ -57,10 +57,13 @@ import plotly.express as px
 from great_tables import GT, md
 
 fpath_interim = "../data/interim/"
+fpath_online = "../data/online/"
 ```
 
 ```{python}
 #| label: Read-Data
+#| eval: false
+
 tstatus = pl.read_parquet(f"{fpath_interim}Kelmarsh_Turbines_Status_20160114_20230109_n385133_cols12.parquet")
 
 # tstatus
@@ -68,6 +71,7 @@ tstatus = pl.read_parquet(f"{fpath_interim}Kelmarsh_Turbines_Status_20160114_202
 
 ```{python}
 #| label: Filter-Stops
+#| eval: false
 
 stops = pl.sql(    
     """
@@ -79,6 +83,7 @@ stops = pl.sql(
 
 ```{python}
 #| label: Filter-Forced-Outages
+#| eval: false
 
 # Aggregate tables using SQL syntax
 foutages = pl.sql(
@@ -99,7 +104,24 @@ foutages = foutages.with_columns(
     pl.when(pl.col("TTF") < 0).then(None).otherwise(pl.col("TTF")).alias("TTF")
 )
 
+
+```
+
+```{python}
+#| label: write-foutages-online
+#| eval: false
+
+foutages.write_parquet(f"{fpath_online}/{"Kelmarsh_Turbines_ForcedOutages_20160114_20230109_n892_cols12.parquet"}")
+
+```
+```{python}
+#| label: read-filtered-fo
+#| eval: true
+
+foutages = pl.read_parquet(f"{fpath_online}/{"Kelmarsh_Turbines_ForcedOutages_20160114_20230109_n892_cols12.parquet"}")
+
 # foutages
+
 ```
 
 ```{python}
