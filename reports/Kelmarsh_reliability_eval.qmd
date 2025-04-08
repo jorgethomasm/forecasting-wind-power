@@ -31,9 +31,9 @@ nocite: '@*'
 - [https://www.blue-energyco.com/our-projects/kelmarsh/](https://www.blue-energyco.com/our-projects/kelmarsh/)  
 
 ::: {#fig-intro layout-ncol="2"}
-![(a) Kelmarsh Wind Farm](../imgs/Kelmarsh_wind_project_blue-energyco.jpg){width="98%"}
+![(a) Kelmarsh Wind Farm](./online_assets/Kelmarsh_wind_project_blue-energyco.jpg){width="98%"}
 
-![(b) Senvion MM92 turbine](../imgs/turbine-senvion_mm92.jpg){width="98%"}
+![(b) Senvion MM92 turbine](./online_assets/turbine-senvion_mm92.jpg){width="98%"}
 
 Kelmarsh Wind Farm is located near Haselbach, Northamptonshire, UK.
 :::
@@ -57,7 +57,7 @@ import plotly.express as px
 from great_tables import GT, md
 
 fpath_interim = "../data/interim/"
-fpath_online = "../data/online/"
+fpath_online = "./online_assets/"
 ```
 
 ```{python}
@@ -118,7 +118,7 @@ foutages.write_parquet(f"{fpath_online}/{"Kelmarsh_Turbines_ForcedOutages_201601
 #| label: read-filtered-fo
 #| eval: true
 
-foutages = pl.read_parquet("Kelmarsh_Turbines_ForcedOutages_20160114_20230109_n892_cols12.parquet")
+foutages = pl.read_parquet("./online_assets/Kelmarsh_Turbines_ForcedOutages_20160114_20230109_n892_cols12.parquet")
 
 # foutages
 
@@ -476,7 +476,7 @@ rel_param = rel_param.drop(["State delete", "year_end" , "year_start" , "duratio
 
 
 rel_param = rel_param.with_columns(
-    pl.lit("wind-turbin-icon-10.jpg").alias("icon")
+    pl.lit("wind-turbine-icon-10.jpg").alias("icon")
 
 )
 ```
@@ -509,7 +509,7 @@ gt_reliability = (
     )
     .fmt_image(
         columns="icon",
-        path="../imgs/"
+        path="./online_assets/"
     )
     .fmt_number(
         columns=["Failure Rate", "FOR", "Availability"],
