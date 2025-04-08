@@ -524,7 +524,7 @@ gt_reliability = (
         columns=["FOR", "Availability"]
     )
     .tab_spanner(
-        label="Out-of-service",
+        label="Out-of-Service",
         columns=["MTTR", "TTR"]
     )
     .tab_spanner(
@@ -542,12 +542,14 @@ gt_reliability = (
         {"Forced Outages": "Total",
         "Monthly_Outages": "Monthly",
         "Failure Rate": "Failure Rate [{{h^-1}}]",
-        "Time to Failure": "TTF [h]"},        
-        icon =  "Turbine",
-        MTTF = "MTTF [h]",
-        MTTR = "MTTR [h]",
-        TTR = "TTR [h]"
-    )
+        "Time to Failure": "TTF [h]",        
+        "icon": "Turbine",
+        "MTTF": "MTTF [h]",
+        "MTTR": "MTTR [h]",
+        "TTR": "Duration [h]",
+        "FOR": "FOR ({{P_0}})",
+        "Availability": "Availability ({{P_1}})"}
+    ).cols_hide(columns="Time to Failure")
 )
 
 ```
