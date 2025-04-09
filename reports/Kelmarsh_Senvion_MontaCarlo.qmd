@@ -1,0 +1,58 @@
+---
+title: "Senvion M92: Monte Carlo Simulation"
+subtitle: "Kelmarsh Wind Farm - 12.3 MW"
+author: "Jorge A. Thomas"
+date: "`r Sys.Date()`"
+format:    
+    html:
+      theme: default
+      self-contained: true
+      code-fold: true
+      df-print: tibble
+      code-summary: "Show the code"
+      toc: true
+      toc-depth: 2
+      grid: 
+        margin-width: 350px      
+execute: 
+  echo: false
+  engine: knitr
+  engine-opt:
+    r.path: "C:/Program Files/R/R-4.4.3/bin/R.exe"  
+reference-location: margin 
+citation-location: document
+bibliography: references.bib
+nocite: '@*'
+---
+
+
+```{R}
+#| label: load-packages
+#| echo: false
+
+library(tidyverse)
+library(arrow)
+
+```
+
+
+```{R}
+#| label: setup-paths
+fpath_processed <- "../data/processed/"
+fpath_interim <- "../data/interim/"
+fpath_online <- "./online_assets/"
+
+relia <- read_parquet(
+  file.path(fpath_processed, "Kelmarsh_reliability_paramaters_2016_2022_n42_cols12.parquet")
+)
+
+glimpse(relia)
+```
+
+## Failure Rates ANOVA
+
+
+```{R}
+
+
+```

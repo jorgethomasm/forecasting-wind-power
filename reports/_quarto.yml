@@ -2,5 +2,5 @@ project:
   type: website
   output-dir: docs
 
-editor: visual
+editor: source
 
