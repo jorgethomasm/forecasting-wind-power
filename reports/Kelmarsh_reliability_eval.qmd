@@ -56,6 +56,7 @@ import polars.selectors as cs
 import plotly.express as px
 from great_tables import GT, md
 
+fpath_processed = "../data/processed/"
 fpath_interim = "../data/interim/"
 fpath_online = "./online_assets/"
 ```
@@ -479,6 +480,27 @@ rel_param = rel_param.with_columns(
     pl.lit("wind-turbine-icon-10.jpg").alias("icon")
 
 )
+
+
+
+```
+
+```{python}
+#| label: write-rel-eval-results
+#| eval: false
+# metadata for filename
+
+first_ts = rel_param["Year"].min()
+last_ts = rel_param["Year"].max()
+
+# Additional metadata options
+# null_pct = int(rel_param["MTTF"].null_count() / len(silistea) * 100)
+
+filename = f"Kelmarsh_reliability_paramaters_{first_ts}_{last_ts}_n{len(rel_param)}_cols{len(rel_param.columns)}.parquet"
+
+# Save processed dataset
+rel_param.write_parquet(f"{fpath_processed}{filename}")
+
 ```
 
 ```{python}
