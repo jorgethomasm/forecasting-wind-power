@@ -482,7 +482,9 @@ rel_param = rel_param.with_columns(
 ```
 
 ```{python}
-#label: generate-table
+#| label: generate-table
+#| eval: true
+
 import polars.selectors as cs
 from great_tables import GT, md, style, loc
 
@@ -491,7 +493,7 @@ gt_reliability = (
     rowname_col = "Turbine",
     groupname_col="Year"
     )
-    .opt_vertical_padding(scale=0.5)
+    .opt_vertical_padding(scale=0.6)
     .opt_horizontal_padding(scale=1)
     .opt_stylize(style=1)
     .tab_style(
@@ -607,3 +609,84 @@ pl_time_state[6].show()
 ```
 
 :::
+
+## Histogram of Failure Causes
+
+### Total
+
+```{python}
+#| label: failure-hist
+#| eval: true
+
+import plotly.express as px
+
+# Count the frequency of each Message
+message_counts = ttr.group_by("Message").agg(
+    pl.len().alias("Count")
+).sort("Count", descending=True)
+
+# Create the horizontal bar plot
+fig = px.bar(
+    message_counts,
+    x="Count",
+    y="Message",
+    hover_data="Count",
+    orientation='h',  # Makes the bars horizontal    
+    labels={"Message": "", "Count": "Frequency"},
+)
+
+# Update layout for better readability
+fig.update_layout(
+    height=1000,  # Increased height to accommodate all labels
+    width=770,
+    yaxis={'categoryorder':'total ascending',
+           'tickangle': 0  # Make y-axis labels horizontal
+    },  # Sort bars by count
+    bargap=0.3 
+)
+fig.update_annotations(font_size=8)
+# fig.update_traces(textposition='outside')
+# fig.for_each_annotation(textangle=0)  # labels horizontal
+
+fig.show()
+```
+
+### Per Wind Turbine
+
+```{python}
+#| label: histrogram-per-turbine
+#| eval: true
+
+# Count the frequency of each Message per Turbine
+message_counts_per_wt = ttr.group_by(["Turbine", "Message"]).agg(
+    pl.len().alias("Count")
+).sort(["Turbine", "Count"], descending=[False, True])
+
+# Create the horizontal bar plot with facets
+fig_2 = px.bar(
+    message_counts_per_wt,
+    x="Count",
+    y="Message",
+    hover_data="Count",
+    facet_col="Turbine",  # Create separate plots per turbine
+    orientation='h',    
+    labels={"Message": "", "Count": "Freq.", "Turbine": ""},
+)
+
+# Update layout for better readability
+fig_2.update_layout(
+    height=1000,
+    width=770,  # Increased width to accommodate facets
+    yaxis={'categoryorder':'total ascending',
+           'tickangle': 0  # Make y-axis labels horizontal
+    },
+    bargap=0.2,
+    showlegend=False
+)
+fig.update_annotations(font_size=8)
+# Update facet settings
+fig_2.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))  # Remove "Turbine=" from facet titles
+
+fig_2.show()
+
+```
