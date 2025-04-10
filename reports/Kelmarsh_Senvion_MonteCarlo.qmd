@@ -33,6 +33,7 @@ library(tidyverse)
 library(plotly)
 library(arrow)
 library(here)
+library(dunn.test)
 
 
 #| label: setup-paths
@@ -45,8 +46,14 @@ source(here("src", "R", "utils", "jthomfuncs.r"))
 
 relia <- read_parquet(here("data", "processed", "Kelmarsh_reliability_paramaters_2016_2022_n42_cols12.parquet"))
 
-glimpse(relia)
+# to categoricals
 
+relia <- relia |>
+  mutate(Year = as.factor(Year)) |>
+  mutate(Turbine = as.factor(Turbine))
+  
+relia$icon <- NULL
+glimpse(relia)
 ```
 
 ## Check Homogeneity
@@ -92,6 +99,38 @@ ggplot(relia, aes(x=Year, y=`Failure Rate`, colour = Turbine)) +
 
 ```
 
+```{r}
+
+# For years
+boxplt_years <- ggplot(relia, aes(x = as.factor(Year), y = `Failure Rate`, fill = as.factor(Year))) +
+  geom_violin(alpha = 0.5) +
+  geom_boxplot(width = 0.2, alpha = 0.8) +
+  geom_jitter(color = "black", size = 0.5, alpha = 0.3) +
+  labs(x = "Year",
+       y = "Failure Rate [1/h]",
+       title = "Distribution of Failure Rates by Year") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+ggplotly(boxplt_years)
+
+
+```
+
+```{r}
+# For turbines
+boxplt_turbines <- ggplot(relia, aes(x = as.factor(Turbine), y = `Failure Rate`, fill = as.factor(Turbine)) +
+  geom_violin(alpha = 0.5) +
+  geom_boxplot(width = 0.2, alpha = 0.8) +
+  geom_jitter(color = "black", size = 0.5, alpha = 0.3) +
+  labs(y = "Failure Rate [1/h]", 
+       title = "Distribution of Failure Rates by Turbine") +
+  theme_minimal() +
+  theme(legend.position = "none")
+  
+ggplotly(boxplt_turbines)
+
+```
 
 ```{r}
 boxplt_turbines <- ggplot(relia, aes(x = Turbine, y = `Failure Rate`, colour=Turbine)) +
@@ -120,33 +159,82 @@ plot(boxplt_years)
 
 ```
 
+### Between Turbines
+
 ```{r}
-## Failure Rates ANOVA
+#| label: statistical-tests
+#| warning: false
 
+# Summary statistics by turbine
+summary_stats <- relia %>%
+  group_by(Turbine) %>%
+  summarise(
+    mean = mean(`Failure Rate`),
+    median = median(`Failure Rate`),
+    sd = sd(`Failure Rate`),
+    n = n()
+  )
 
-mod1 <- aov(`Failure Rate` ~ Turbine, data = relia)
-summary(mod1)
+print("Summary Statistics by Turbine:")
+print(summary_stats)
 
+# ANOVA test for means
+anova_result <- aov(`Failure Rate` ~ Turbine, data = relia)
+print("\nANOVA Test Results:")
+print(summary(anova_result))
+
+# Kruskal-Wallis test for medians
+kw_test <- kruskal.test(`Failure Rate` ~ Turbine, data = relia)
+print("\nKruskal-Wallis Test Results:")
+print(kw_test)
+
+# Post-hoc tests if significant differences are found
+if(kw_test$p.value < 0.05) {
+  # Dunn test for pairwise comparisons
+  
+  dunn_result <- dunn.test(relia$`Failure Rate`, relia$Turbine, method="bonferroni")
+  print("\nDunn's Test Results (pairwise comparisons):")
+  print(dunn_result)
+  }
 
 ```
 
+### Between Years
+
 ```{r}
+#| label: stat-test-frate-years
+#| eval: true
 
-mod2 <- aov(`Failure Rate` ~ Year, data = relia)
-summary(mod2)
+# Summary statistics by turbine
+summary_stats <- relia %>%
+  group_by(Year) %>%
+  summarise(
+    mean = mean(`Failure Rate`),
+    median = median(`Failure Rate`),
+    sd = sd(`Failure Rate`),
+    n = n()
+  )
 
+print("Summary Statistics by Year:")
+print(summary_stats)
 
+# ANOVA test for means
+anova_result <- aov(`Failure Rate` ~ Year, data = relia)
+print("\nANOVA Test Results:")
+print(summary(anova_result))
+
+# Kruskal-Wallis test for medians
+kw_test <- kruskal.test(`Failure Rate` ~ Year, data = relia)
+print("\nKruskal-Wallis Test Results:")
+print(kw_test)
+
+# Post-hoc tests if significant differences are found
+if(kw_test$p.value < 0.05) {
+  # Dunn test for pairwise comparisons  
+  dunn_result <- dunn.test(relia$`Failure Rate`, relia$Year, method="bonferroni", kw=FALSE, label=TRUE)
+  print("\nDunn's Test Results (pairwise comparisons):")
+  print(dunn_result)
+}
 
 
 ```
-```{r}
-
-
-ggplot(relia, aes(x=Year, y=`Failure Rate`, colour = Turbine)) +
-  geom_line() + facet_grid(~Turbine) + 
-  theme(legend.location = NULL)
-
-```
-
-
-
