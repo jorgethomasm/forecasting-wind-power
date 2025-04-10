@@ -25,34 +25,128 @@ bibliography: references.bib
 nocite: '@*'
 ---
 
-
-```{R}
+```{r}
 #| label: load-packages
 #| echo: false
 
 library(tidyverse)
+library(plotly)
 library(arrow)
+library(here)
 
-```
 
-
-```{R}
 #| label: setup-paths
-fpath_processed <- "../data/processed/"
+fpath_processed <- "../data/processed"
 fpath_interim <- "../data/interim/"
 fpath_online <- "./online_assets/"
 
-relia <- read_parquet(
-  file.path(fpath_processed, "Kelmarsh_reliability_paramaters_2016_2022_n42_cols12.parquet")
-)
+source(here("src", "R", "utils", "jthomfuncs.r"))
+# theme_set(jthomggtheme)
+
+relia <- read_parquet(here("data", "processed", "Kelmarsh_reliability_paramaters_2016_2022_n42_cols12.parquet"))
 
 glimpse(relia)
+
 ```
 
+## Check Homogeneity
+
+To determine whether the failure rates of the six turbines can be grouped together and represent the reliability of one turbine model, you can analyze the data statistically. Here are some steps you can follow:
+
+1. Check Homogeneity
+Verify whether the failure rates are consistent across all six turbines. This can be done using statistical tests to assess variance, such as:
+
+ANOVA (Analysis of Variance): If the failure rates are continuous and you want to check whether they are significantly different between turbines.
+
+Levene's Test or Bartlett's Test: To specifically assess equality of variances.
+
+2. Calculate Summary Statistics
+Compute measures such as the mean, median, standard deviation, and confidence intervals for failure rates. If these statistics indicate similar central tendencies and spread across turbines, it supports the idea of grouping them.
+
+3. Analyze Patterns
+Plot the data (e.g., using a box plot or scatter plot) to visually inspect whether the failure rates have similar distributions across turbines.
+
+4. Cluster Analysis (if needed)
+If you suspect outliers or sub-groups within the turbines, use clustering techniques to see if the turbines naturally fall into distinct groups based on their failure rates.
+
+5. Perform a Reliability Analysis
+Assuming homogeneity is confirmed, you can pool the failure rates and conduct reliability analysis:
+
+Estimate the reliability metrics, such as Mean Time Between Failures (MTBF) or probability of failure within a given timeframe.
+
+Fit statistical models such as Weibull or exponential distributions if the failure rates follow a specific trend.
+
+6. Investigate External Factors
+Ensure there aren’t external influences (e.g., installation conditions, maintenance practices, or environmental factors) causing differences among turbines. Such confounding factors could invalidate grouping the turbines as representative of the same reliability.
+
+```{r}
+#| label: failure-rate-plot
+
+ggplot(relia, aes(x=Year, y=`Failure Rate`, colour = Turbine)) +
+  ggtitle("Failure Rate") +
+  geom_line() + 
+  facet_grid(~Turbine) + 
+  labs(y=expression(lambda ~ "[h"^{-1}*"]")) +
+  theme(legend.position = "none", axis.title.y = element_text(angle = 0, vjust = 0.5))
+
+
+```
+
+
+```{r}
+boxplt_turbines <- ggplot(relia, aes(x = Turbine, y = `Failure Rate`, colour=Turbine)) +
+  geom_boxplot() +
+  geom_jitter() +
+  labs(y = "Failure Rate [1/h]") +
+  # labs(y=expression(lambda ~ "[h"^{-1}*"]")) +
+ # facet_wrap(~Year) +  
+  theme(legend.position = "none")
+  
+ggplotly(boxplt_turbines)  
+```
+
+```{r}
+
+boxplt_years <- ggplot(relia, aes(x = Year, y = `Failure Rate`, colour=as.factor(Year))) +
+  geom_boxplot() +
+  geom_jitter() +
+  labs(y = "Failure Rate [1/h]") +  # Changed to plain text
+  #labs(y=expression(lambda ~ "[h"^{-1}*"]")) +  
+  theme(legend.position = "none", axis.title.y = element_text(angle = 0, vjust = 0.5))
+
+plot(boxplt_years)
+# ggplotly(boxplt_years) 
+
+
+```
+
+```{r}
 ## Failure Rates ANOVA
 
 
-```{R}
+mod1 <- aov(`Failure Rate` ~ Turbine, data = relia)
+summary(mod1)
 
 
 ```
+
+```{r}
+
+mod2 <- aov(`Failure Rate` ~ Year, data = relia)
+summary(mod2)
+
+
+
+
+```
+```{r}
+
+
+ggplot(relia, aes(x=Year, y=`Failure Rate`, colour = Turbine)) +
+  geom_line() + facet_grid(~Turbine) + 
+  theme(legend.location = NULL)
+
+```
+
+
+
