@@ -74,6 +74,14 @@ tstatus = pl.read_parquet(f"{fpath_interim}Kelmarsh_Turbines_Status_20160114_202
 #| label: Filter-Stops
 #| eval: false
 
+curtailment = pl.sql(    
+    """
+    SELECT * EXCLUDE ("Custom contract category")    
+    FROM tstatus
+    WHERE "Status" = 'Curtailment'
+    """).collect()
+
+
 stops = pl.sql(    
     """
     SELECT * EXCLUDE ("Custom contract category")    
@@ -225,8 +233,6 @@ print(tstates.null_count())
 #| label: Square-Signal-Plot
 #| eval: false
 
-import plotly.express as px
-
 # Other line_shape options, or interpolation methods between given points:
 
 # 'hv' step ends, equivalent to pyplot's post option;
@@ -286,9 +292,6 @@ fig.show()
 
 ```{python}
 #| label: Time-State-Plot-By-Year
-
-import plotly.express as px
-from plotly.subplots import make_subplots
 
 # Get unique years
 years = tstates["Year"].unique().sort()
@@ -386,16 +389,13 @@ tstates_dur = tstates_dur.rename({"wt": "Turbine"}).drop_nulls()
 #label: calc-ttf-ttr
 
 ttf = tstates_dur.filter(pl.col("State") == 1).rename({"Duration": "TTF"})
-ttf_agg_year = (
-    # ttf.group_by("Year_wt")
+ttf_agg_year = (    
     ttf.group_by(["Year",  "Turbine"])
     .agg(
         pl.len().alias("State delete"),                
         pl.sum("TTF").alias("Time to Failure"),
         pl.mean("TTF").alias("MTTF")                      
-        )
-    # .rename({"wt": "Turbine"})
-    #.sort("Year_wt")     
+        )         
     .sort(["Year",  "Turbine"])     
     )
 
@@ -411,9 +411,32 @@ ttr_agg_year = (
     )
 ```
 
+```{python}
+#| label: save-ttf-ttr
+#| eval: false
+
+# metadata for filename
+
+first_ts = ttr["Year"].min()
+last_ts = ttr["Year"].max()
+
+# Additional metadata options
+# null_pct = int(rel_param["MTTF"].null_count() / len(silistea) * 100)
+
+filename_ttf = f"Kelmarsh_time-to-failure_{first_ts}_{last_ts}_n{len(ttf)}_cols{len(ttf.columns)}.parquet"
+
+# Save processed dataset
+ttf.write_parquet(f"{fpath_processed}{filename_ttf}")
+
+filename_ttr = f"Kelmarsh_time-to-repair_{first_ts}_{last_ts}_n{len(ttr)}_cols{len(ttr.columns)}.parquet"
+
+# Save processed dataset
+ttr.write_parquet(f"{fpath_processed}{filename_ttr}")
+
+```
 
 ```{python}
-#label: calc-outages-month
+#| label: calc-outages-month
 
 # monthly_outages = pl.sql("""
 #     SELECT 
@@ -432,11 +455,9 @@ monthly_outages = ttr.with_columns(
 
 monthly_outages = (
     monthly_outages.group_by(["Year", "Turbine", "Month"])
-    .agg(
-        pl.len().alias("Outages")
-        )
-        .sort(["Year",  "Turbine", "Month"])
-        )
+    .agg(pl.len().alias("Outages"))
+    .sort(["Year", "Turbine", "Month"])
+    )
 
 monthly_outages_piv = monthly_outages.pivot(
         values="Outages",
@@ -446,11 +467,11 @@ monthly_outages_piv = monthly_outages.pivot(
     ).fill_null(strategy="zero")
 
 monthly_outages_piv = monthly_outages_piv.select(
-    ["Year", "Turbine", "1", "2",  "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"]).sort("Year", "Turbine")
+    ["Year", "Turbine", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"]).sort("Year", "Turbine")
 
 monthly_outages_ = monthly_outages_piv.with_columns(
-    pl.concat_list(pl.all().exclude("Year",  "Turbine")).alias("Monthly_Outages")
-    ).select(["Year",  "Turbine", "Monthly_Outages"])
+    pl.concat_list(pl.all().exclude("Year", "Turbine")).alias("Monthly_Outages")
+    ).select(["Year", "Turbine", "Monthly_Outages"])
 ```
 
 
@@ -458,7 +479,7 @@ monthly_outages_ = monthly_outages_piv.with_columns(
 #| label: Reliablity-parameters
 #| eval: true
 
-rel_param = ttf_agg_year.join(ttr_agg_year, on=["Year",  "Turbine"], how="left")
+rel_param = ttf_agg_year.join(ttr_agg_year, on=["Year", "Turbine"], how="left")
 rel_param = rel_param.join(year_durations, on="Year")
 rel_param = rel_param.join(monthly_outages_, on=["Year", "Turbine"])
 
@@ -467,10 +488,8 @@ rel_param = rel_param.with_columns(
     (pl.col("MTTR")/(pl.col("MTTF") + pl.col("MTTR"))).alias("FOR"),    
 )
 
-rel_param = rel_param.with_columns(
-    #(pl.col("FOR")*pl.col("duration_hours")).alias("Total Outage Time"),
+rel_param = rel_param.with_columns(    
     (1-pl.col("FOR")).alias("Availability")
-
 )
 
 rel_param = rel_param.drop(["State delete", "year_end" , "year_start" , "duration_hours"])
@@ -481,13 +500,12 @@ rel_param = rel_param.with_columns(
 
 )
 
-
-
 ```
 
 ```{python}
 #| label: write-rel-eval-results
 #| eval: false
+
 # metadata for filename
 
 first_ts = rel_param["Year"].min()
@@ -507,7 +525,7 @@ rel_param.write_parquet(f"{fpath_processed}{filename}")
 #| label: generate-table
 #| eval: true
 
-import polars.selectors as cs
+# import polars.selectors as cs
 from great_tables import GT, md, style, loc
 
 gt_reliability = (
@@ -581,6 +599,8 @@ gt_reliability = (
 ## Reliability Parameters
 
 ```{python}
+|# label: print-great-table
+
 gt_reliability
 ```
 
