@@ -202,7 +202,7 @@ new_rows = new_rows.select(tstates.columns)  # reorder rows
 tstates = pl.concat([tstates, new_rows]).sort(["Year_wt", "Timestamp"])
 
 
-# ---- 6) Drop columns Year > 2022 2023 
+# ---- 6) Drop columns Year > 2022  
 
 tstates = tstates.filter(pl.col("Year") <= last_year)
 
@@ -398,7 +398,7 @@ ttf_agg_year = (
     .agg(
         pl.len().alias("State delete"),                
         pl.sum("TTF").alias("Time to Failure"),
-        pl.mean("TTF").alias("MTTF")                      
+        pl.mean("TTF").alias("MTTF")    # Check "last seen"                  
         )         
     .sort(["Year",  "Turbine"])     
     )
@@ -496,7 +496,7 @@ rel_param = rel_param.with_columns(
     (1-pl.col("FOR")).alias("Availability")
 )
 
-rel_param = rel_param.drop(["State delete", "year_end" , "year_start" , "duration_hours"])
+# rel_param = rel_param.drop(["State delete", "year_end" , "year_start" , "duration_hours"])
 
 
 rel_param = rel_param.with_columns(

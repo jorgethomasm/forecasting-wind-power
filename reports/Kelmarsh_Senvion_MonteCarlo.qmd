@@ -82,11 +82,6 @@ plt_bathtub <- ggplot(relia, aes(x=Year, y=`Failure Rate`, colour = Turbine)) +
 
 ### Between Turbines
 
-```{r}
-#| label: best-plot-clusters-turbines
-
-```
-
 
 ```{r}
 #| label: stat-test-frate-turbines
@@ -136,11 +131,7 @@ plot(plt_boxplt_years/plt_bathtub)
 # Summary statistics by Year
 relia |>
   group_by(Year) |>
-  summarise(
-    mean = mean(`Failure Rate`),
-    median = median(`Failure Rate`),
-    sd = sd(`Failure Rate`),
-    n = n())
+  summarise(mean = mean(`Failure Rate`), median = median(`Failure Rate`), sd = sd(`Failure Rate`), n = n())
 
 dunn_result_year <- dunn.test(relia$`Failure Rate`, relia$Year, method="none", kw=TRUE, label=TRUE, wrap=TRUE)
 ```
@@ -174,154 +165,18 @@ plot_boxplt_wt <- ggplot(relia_2017_2021, aes(x = Turbine, y = `Failure Rate`, c
   
 plot_boxplt_wt
 
-
-
-# median per wt
 ```
 
 ```{r}
+#| label: constant-frates-per-turbine
 #| eval: true
 
-relia_2017_2021 |>
+frates_cte <- relia_2017_2021 |>
   group_by(Turbine) |>
   summarise(mean(`Failure Rate`))
 
-```
+frates_cte
 
-```{r}
-#| eval: false
-
-ttf |>
-  filter(Year != 2016 & Year != 2022) |>
-  group_by(Turbine) |>
-  summarise(MTTF = mean(TTF)) |>
-  mutate(Failure_Rate = (1/MTTF))
-
-# "last seen" TTFs not TRUE!
-
-
-```
-
-```{r}
-#| label: ttf-distribution-analysis
-#| eval: false
-
-# Filter data for 2017-2021
-ttf_filtered <- ttf |> 
-  filter(Year %in% c("2017", "2018", "2019", "2020", "2021"))
-
-# Fit distributions
-fit_weibull <- fitdist(ttf_filtered$TTF, "weibull")
-fit_lnorm <- fitdist(ttf_filtered$TTF, "lnorm")
-fit_exp <- fitdist(ttf_filtered$TTF, "exp")
-
-# Plot empirical vs theoretical distributions
-p5 <- ggplot(ttf_filtered, aes(x = TTF)) +
-  geom_histogram(aes(y = ..density..), bins = 30, 
-                fill = "#1E88E5", alpha = 0.7) +
-  geom_density(color = "#FF5252", linewidth = 1) +
-  stat_function(fun = dweibull, 
-                args = list(shape = fit_weibull$estimate[1], 
-                          scale = fit_weibull$estimate[2]),
-                color = "darkgreen", linetype = "dashed") +
-  stat_function(fun = dlnorm,
-                args = list(meanlog = fit_lnorm$estimate[1],
-                          sdlog = fit_lnorm$estimate[2]),
-                color = "blue", linetype = "dashed") +
-  labs(title = "TTF Distribution with Fitted Curves",
-       x = "Time To Failure (hours)",
-       y = "Density") +
-  theme_minimal()
-
-# Goodness of fit plots
-p6 <- ggplot(ttf_filtered, aes(sample = TTF)) +
-  stat_qq() +
-  stat_qq_line(color = "#FF5252") +
-  labs(title = "Q-Q Plot") +
-  theme_minimal()
-
-# Print summary statistics and goodness of fit tests
-summary(ttf_filtered$TTF)
-gof_stats <- gofstat(list(fit_weibull, fit_lnorm, fit_exp))
-print(gof_stats)
-
-# Arrange plots side by side
-p5 + p6
-
-
-
-```
-
-```{r}
-#| label: ttf-dist-analysis
-
-# Filter data for 2017-2021
-ttf_filtered <- ttf |> 
-  filter(Year %in% c("2017", "2018", "2019", "2020", "2021"))
-
-# Fit distributions
-fit_weibull <- fitdist(ttf_filtered$TTF, "weibull")
-fit_lnorm <- fitdist(ttf_filtered$TTF, "lnorm")
-fit_exp <- fitdist(ttf_filtered$TTF, "exp")
-
-# Plot empirical vs theoretical distributions
-p5 <- ggplot(ttf_filtered, aes(x = TTF)) +
-  geom_histogram(aes(y = ..density..), bins = 30, 
-                fill = "#1E88E5", alpha = 0.7) +
-  geom_density(color = "#FF5252", linewidth = 1) +
-  stat_function(fun = dweibull, 
-                args = list(shape = fit_weibull$estimate[1], 
-                          scale = fit_weibull$estimate[2]),
-                color = "darkgreen", linetype = "dashed") +
-  stat_function(fun = dlnorm,
-                args = list(meanlog = fit_lnorm$estimate[1],
-                          sdlog = fit_lnorm$estimate[2]),
-                color = "blue", linetype = "dashed") +
-  labs(title = "TTF Distribution with Fitted Curves",
-       x = "Time To Failure (hours)",
-       y = "Density") +
-  theme_minimal()
-
-# Goodness of fit plots
-p6 <- ggplot(ttf_filtered, aes(sample = TTF)) +
-  stat_qq() +
-  stat_qq_line(color = "#FF5252") +
-  labs(title = "Q-Q Plot") +
-  theme_minimal()
-
-# Print summary statistics
-summary(ttf_filtered$TTF)
-
-# Compare distributions using AIC and BIC
-aic_values <- c(weibull = fit_weibull$aic, 
-                lognormal = fit_lnorm$aic, 
-                exponential = fit_exp$aic)
-bic_values <- c(weibull = fit_weibull$bic, 
-                lognormal = fit_lnorm$bic, 
-                exponential = fit_exp$bic)
-
-print("AIC values:")
-print(aic_values)
-print("BIC values:")
-print(bic_values)
-
-# Kolmogorov-Smirnov test for each distribution
-ks_weibull <- ks.test(ttf_filtered$TTF, "pweibull", 
-                      shape = fit_weibull$estimate[1], 
-                      scale = fit_weibull$estimate[2])
-
-ks_lnorm <- ks.test(ttf_filtered$TTF, "plnorm", 
-                    meanlog = fit_lnorm$estimate[1], 
-                    sdlog = fit_lnorm$estimate[2])
-
-ks_exp <- ks.test(ttf_filtered$TTF, "pexp", 
-                  rate = fit_exp$estimate)
-
-print("Kolmogorov-Smirnov test results:")
-print(list(weibull = ks_weibull, lognormal = ks_lnorm, exponential = ks_exp))
-
-# Arrange plots side by side
-p5 + p6
 ```
 
 ## Repairing Rates
@@ -329,8 +184,11 @@ p5 + p6
 ```{r}
 # Distribution analysis
 
+ttr_2017_2021 <- ttr |> 
+ filter(Year != 2016 & Year != 2022)
+
 # Create histogram with density plot
-p1 <- ggplot(ttr, aes(x = TTR)) +
+p1 <- ggplot(ttr_2017_2021, aes(x = TTR)) +
   geom_histogram(aes(y =after_stat(density)), bins = 30, fill = "#1E88E5", alpha = 0.7) +
   geom_density(color = "#FF5252", linewidth = 1) +
   labs(title = "Distribution of Time To Repair",
@@ -339,17 +197,17 @@ p1 <- ggplot(ttr, aes(x = TTR)) +
   theme_minimal()
 
 # Q-Q plot
-p2 <- ggplot(ttr, aes(sample = TTR)) +
+p2 <- ggplot(ttr_2017_2021, aes(sample = TTR)) +
   stat_qq() +
   stat_qq_line(color = "#FF5252") +
   labs(title = "Q-Q Plot of Time To Repair") +
   theme_minimal()
 
 # Basic statistics
-summary_stats <- summary(ttr$TTR)
+summary_stats <- summary(ttr_2017_2021$TTR)
 
 # Test for normality
-shapiro_test <- shapiro.test(ttr$TTR)
+shapiro_test <- shapiro.test(ttr_2017_2021$TTR)
 
 # Arrange plots side by side
 p1 + p2
