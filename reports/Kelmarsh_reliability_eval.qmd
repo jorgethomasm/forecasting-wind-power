@@ -382,6 +382,10 @@ year_durations = year_durations.with_columns(
 
 tstates_dur = tstates_dur.rename({"wt": "Turbine"}).drop_nulls()
 
+tstates_dur = tstates_dur.sort(["Turbine", "Timestamp"])
+
+# TODO: write "none" to "last seen" with state = 1 Durations. To avoid inserting unrealistic short TTFs
+
 ```
 
 

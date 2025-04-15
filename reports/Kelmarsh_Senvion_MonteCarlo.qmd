@@ -34,9 +34,9 @@ library(plotly)
 library(arrow)
 library(here)
 library(dunn.test)
+# library(fitdistrplus)
+library(patchwork)
 
-
-#| label: setup-paths
 fpath_processed <- "../data/processed"
 fpath_interim <- "../data/interim/"
 fpath_online <- "./online_assets/"
@@ -45,196 +45,314 @@ source(here("src", "R", "utils", "jthomfuncs.r"))
 # theme_set(jthomggtheme)
 
 relia <- read_parquet(here("data", "processed", "Kelmarsh_reliability_paramaters_2016_2022_n42_cols12.parquet"))
+ttf <- read_parquet(here("data", "processed", "Kelmarsh_time-to-failure_2016_2022_n929_cols8.parquet"))
+ttr <- read_parquet(here("data", "processed", "Kelmarsh_time-to-repair_2016_2022_n889_cols8.parquet"))
 
 # to categoricals
+cats_feats <- c("Year", "Turbine")
 
-relia <- relia |>
-  mutate(Year = as.factor(Year)) |>
+relia <- relia |>  
   mutate(Turbine = as.factor(Turbine))
-  
+
 relia$icon <- NULL
-glimpse(relia)
+
+ttf <- ttf |>
+  mutate(across(all_of(cats_feats), ~ factor(.x, ordered = TRUE)))
+
+ttr <- ttr |>
+  mutate(across(all_of(cats_feats), ~ factor(.x, ordered = TRUE)))       
+
 ```
 
-## Check Homogeneity
+## Failure Rate Analysis 
 
-To determine whether the failure rates of the six turbines can be grouped together and represent the reliability of one turbine model, you can analyze the data statistically. Here are some steps you can follow:
-
-1. Check Homogeneity
-Verify whether the failure rates are consistent across all six turbines. This can be done using statistical tests to assess variance, such as:
-
-ANOVA (Analysis of Variance): If the failure rates are continuous and you want to check whether they are significantly different between turbines.
-
-Levene's Test or Bartlett's Test: To specifically assess equality of variances.
-
-2. Calculate Summary Statistics
-Compute measures such as the mean, median, standard deviation, and confidence intervals for failure rates. If these statistics indicate similar central tendencies and spread across turbines, it supports the idea of grouping them.
-
-3. Analyze Patterns
-Plot the data (e.g., using a box plot or scatter plot) to visually inspect whether the failure rates have similar distributions across turbines.
-
-4. Cluster Analysis (if needed)
-If you suspect outliers or sub-groups within the turbines, use clustering techniques to see if the turbines naturally fall into distinct groups based on their failure rates.
-
-5. Perform a Reliability Analysis
-Assuming homogeneity is confirmed, you can pool the failure rates and conduct reliability analysis:
-
-Estimate the reliability metrics, such as Mean Time Between Failures (MTBF) or probability of failure within a given timeframe.
-
-Fit statistical models such as Weibull or exponential distributions if the failure rates follow a specific trend.
-
-6. Investigate External Factors
-Ensure there aren’t external influences (e.g., installation conditions, maintenance practices, or environmental factors) causing differences among turbines. Such confounding factors could invalidate grouping the turbines as representative of the same reliability.
+### Checking for Homogeneity
 
 ```{r}
 #| label: failure-rate-plot
 
-ggplot(relia, aes(x=Year, y=`Failure Rate`, colour = Turbine)) +
-  ggtitle("Failure Rate") +
-  geom_line() + 
-  facet_grid(~Turbine) + 
+plt_bathtub <- ggplot(relia, aes(x=Year, y=`Failure Rate`, colour = Turbine)) +
+  ggtitle("Bathtub Curve?") +
+  geom_line() + geom_point() +
+  #facet_grid(~Turbine) + 
   labs(y=expression(lambda ~ "[h"^{-1}*"]")) +
-  theme(legend.position = "none", axis.title.y = element_text(angle = 0, vjust = 0.5))
-
-
-```
-
-```{r}
-
-# For years
-boxplt_years <- ggplot(relia, aes(x = as.factor(Year), y = `Failure Rate`, fill = as.factor(Year))) +
-  geom_violin(alpha = 0.5) +
-  geom_boxplot(width = 0.2, alpha = 0.8) +
-  geom_jitter(color = "black", size = 0.5, alpha = 0.3) +
-  labs(x = "Year",
-       y = "Failure Rate [1/h]",
-       title = "Distribution of Failure Rates by Year") +
-  theme_minimal() +
-  theme(legend.position = "none")
-
-ggplotly(boxplt_years)
-
-
-```
-
-```{r}
-# For turbines
-boxplt_turbines <- ggplot(relia, aes(x = as.factor(Turbine), y = `Failure Rate`, fill = as.factor(Turbine)) +
-  geom_violin(alpha = 0.5) +
-  geom_boxplot(width = 0.2, alpha = 0.8) +
-  geom_jitter(color = "black", size = 0.5, alpha = 0.3) +
-  labs(y = "Failure Rate [1/h]", 
-       title = "Distribution of Failure Rates by Turbine") +
-  theme_minimal() +
-  theme(legend.position = "none")
-  
-ggplotly(boxplt_turbines)
-
-```
-
-```{r}
-boxplt_turbines <- ggplot(relia, aes(x = Turbine, y = `Failure Rate`, colour=Turbine)) +
-  geom_boxplot() +
-  geom_jitter() +
-  labs(y = "Failure Rate [1/h]") +
-  # labs(y=expression(lambda ~ "[h"^{-1}*"]")) +
- # facet_wrap(~Year) +  
-  theme(legend.position = "none")
-  
-ggplotly(boxplt_turbines)  
-```
-
-```{r}
-
-boxplt_years <- ggplot(relia, aes(x = Year, y = `Failure Rate`, colour=as.factor(Year))) +
-  geom_boxplot() +
-  geom_jitter() +
-  labs(y = "Failure Rate [1/h]") +  # Changed to plain text
-  #labs(y=expression(lambda ~ "[h"^{-1}*"]")) +  
-  theme(legend.position = "none", axis.title.y = element_text(angle = 0, vjust = 0.5))
-
-plot(boxplt_years)
-# ggplotly(boxplt_years) 
-
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5))
 
 ```
 
 ### Between Turbines
 
 ```{r}
-#| label: statistical-tests
+#| label: best-plot-clusters-turbines
+
+```
+
+
+```{r}
+#| label: stat-test-frate-turbines
 #| warning: false
 
 # Summary statistics by turbine
-summary_stats <- relia %>%
-  group_by(Turbine) %>%
+relia |>
+  group_by(Turbine) |>
   summarise(
     mean = mean(`Failure Rate`),
     median = median(`Failure Rate`),
     sd = sd(`Failure Rate`),
-    n = n()
-  )
+    n = n())
 
-print("Summary Statistics by Turbine:")
-print(summary_stats)
+# summary_stats
 
-# ANOVA test for means
-anova_result <- aov(`Failure Rate` ~ Turbine, data = relia)
-print("\nANOVA Test Results:")
-print(summary(anova_result))
-
-# Kruskal-Wallis test for medians
-kw_test <- kruskal.test(`Failure Rate` ~ Turbine, data = relia)
-print("\nKruskal-Wallis Test Results:")
-print(kw_test)
-
-# Post-hoc tests if significant differences are found
-if(kw_test$p.value < 0.05) {
-  # Dunn test for pairwise comparisons
-  
-  dunn_result <- dunn.test(relia$`Failure Rate`, relia$Turbine, method="bonferroni")
-  print("\nDunn's Test Results (pairwise comparisons):")
-  print(dunn_result)
-  }
+dunn_result_wt <- dunn.test(relia$`Failure Rate`, relia$Turbine, method="none", kw=TRUE, label=TRUE, wrap=TRUE)
 
 ```
 
 ### Between Years
 
 ```{r}
-#| label: stat-test-frate-years
+#| label: best-plot-clusters-years
 #| eval: true
 
-# Summary statistics by turbine
-summary_stats <- relia %>%
-  group_by(Year) %>%
+relia <- relia |>  
+  mutate(Year = as.factor(Year))
+
+plt_boxplt_years <- ggplot(relia, aes(x = Year, y = `Failure Rate`)) +
+  geom_boxplot(fill = "grey", color = "black", alpha = 0.3) +  
+  #geom_violin(alpha = 0.5) +
+  geom_jitter(aes(color=Turbine)) +  
+  #labs(y = "Failure Rate [1/h]") +  # Changed to plain text
+  labs(y=expression(lambda ~ "[h"^{-1}*"]"), x="") +  
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
+  ggtitle("Yearly Failure Rates of Kelmarsh Wind Turbines")
+
+plot(plt_boxplt_years/plt_bathtub)
+
+```
+
+```{r}
+#| label: stat-test-frate-years
+#| eval: false
+
+# Summary statistics by Year
+relia |>
+  group_by(Year) |>
   summarise(
     mean = mean(`Failure Rate`),
     median = median(`Failure Rate`),
     sd = sd(`Failure Rate`),
-    n = n()
-  )
+    n = n())
 
-print("Summary Statistics by Year:")
-print(summary_stats)
+dunn_result_year <- dunn.test(relia$`Failure Rate`, relia$Year, method="none", kw=TRUE, label=TRUE, wrap=TRUE)
+```
 
-# ANOVA test for means
-anova_result <- aov(`Failure Rate` ~ Year, data = relia)
-print("\nANOVA Test Results:")
-print(summary(anova_result))
+Years from 2017 and 2021 represents a cluster of the Senvion M92 wind turbines.
 
-# Kruskal-Wallis test for medians
-kw_test <- kruskal.test(`Failure Rate` ~ Year, data = relia)
-print("\nKruskal-Wallis Test Results:")
-print(kw_test)
+- This assumes anemometer problem was fixed!
+- Great base line operation monitoring
 
-# Post-hoc tests if significant differences are found
-if(kw_test$p.value < 0.05) {
-  # Dunn test for pairwise comparisons  
-  dunn_result <- dunn.test(relia$`Failure Rate`, relia$Year, method="bonferroni", kw=FALSE, label=TRUE)
-  print("\nDunn's Test Results (pairwise comparisons):")
-  print(dunn_result)
-}
+## Homogenous Failure Rate for Kelmarsh
+
+```{r}
+#| label: filter-2017to2021
+
+relia_2017_2021 <- relia |> 
+ filter(Year != 2016 & Year != 2022)
+
+```
+
+```{r}
+#| label: plot-lambda-per-wt
+
+plot_boxplt_wt <- ggplot(relia_2017_2021, aes(x = Turbine, y = `Failure Rate`, colour=Turbine)) +
+  geom_boxplot() +
+  geom_jitter() +
+  #labs(y = "Failure Rate [1/h]") +
+  labs(y=expression(lambda ~ "[h"^{-1}*"]")) +
+  #facet_wrap(~Year) +  
+  theme(legend.position = "none", axis.title.y = element_text(angle = 0, vjust = 0.5)) +
+  ggtitle("Failure Rates per Turbine at Kelmarsh (2017-2021)")
+  
+plot_boxplt_wt
+
+
+
+# median per wt
+```
+
+```{r}
+#| eval: true
+
+relia_2017_2021 |>
+  group_by(Turbine) |>
+  summarise(mean(`Failure Rate`))
+
+```
+
+```{r}
+#| eval: false
+
+ttf |>
+  filter(Year != 2016 & Year != 2022) |>
+  group_by(Turbine) |>
+  summarise(MTTF = mean(TTF)) |>
+  mutate(Failure_Rate = (1/MTTF))
+
+# "last seen" TTFs not TRUE!
 
 
 ```
+
+```{r}
+#| label: ttf-distribution-analysis
+#| eval: false
+
+# Filter data for 2017-2021
+ttf_filtered <- ttf |> 
+  filter(Year %in% c("2017", "2018", "2019", "2020", "2021"))
+
+# Fit distributions
+fit_weibull <- fitdist(ttf_filtered$TTF, "weibull")
+fit_lnorm <- fitdist(ttf_filtered$TTF, "lnorm")
+fit_exp <- fitdist(ttf_filtered$TTF, "exp")
+
+# Plot empirical vs theoretical distributions
+p5 <- ggplot(ttf_filtered, aes(x = TTF)) +
+  geom_histogram(aes(y = ..density..), bins = 30, 
+                fill = "#1E88E5", alpha = 0.7) +
+  geom_density(color = "#FF5252", linewidth = 1) +
+  stat_function(fun = dweibull, 
+                args = list(shape = fit_weibull$estimate[1], 
+                          scale = fit_weibull$estimate[2]),
+                color = "darkgreen", linetype = "dashed") +
+  stat_function(fun = dlnorm,
+                args = list(meanlog = fit_lnorm$estimate[1],
+                          sdlog = fit_lnorm$estimate[2]),
+                color = "blue", linetype = "dashed") +
+  labs(title = "TTF Distribution with Fitted Curves",
+       x = "Time To Failure (hours)",
+       y = "Density") +
+  theme_minimal()
+
+# Goodness of fit plots
+p6 <- ggplot(ttf_filtered, aes(sample = TTF)) +
+  stat_qq() +
+  stat_qq_line(color = "#FF5252") +
+  labs(title = "Q-Q Plot") +
+  theme_minimal()
+
+# Print summary statistics and goodness of fit tests
+summary(ttf_filtered$TTF)
+gof_stats <- gofstat(list(fit_weibull, fit_lnorm, fit_exp))
+print(gof_stats)
+
+# Arrange plots side by side
+p5 + p6
+
+
+
+```
+
+```{r}
+#| label: ttf-dist-analysis
+
+# Filter data for 2017-2021
+ttf_filtered <- ttf |> 
+  filter(Year %in% c("2017", "2018", "2019", "2020", "2021"))
+
+# Fit distributions
+fit_weibull <- fitdist(ttf_filtered$TTF, "weibull")
+fit_lnorm <- fitdist(ttf_filtered$TTF, "lnorm")
+fit_exp <- fitdist(ttf_filtered$TTF, "exp")
+
+# Plot empirical vs theoretical distributions
+p5 <- ggplot(ttf_filtered, aes(x = TTF)) +
+  geom_histogram(aes(y = ..density..), bins = 30, 
+                fill = "#1E88E5", alpha = 0.7) +
+  geom_density(color = "#FF5252", linewidth = 1) +
+  stat_function(fun = dweibull, 
+                args = list(shape = fit_weibull$estimate[1], 
+                          scale = fit_weibull$estimate[2]),
+                color = "darkgreen", linetype = "dashed") +
+  stat_function(fun = dlnorm,
+                args = list(meanlog = fit_lnorm$estimate[1],
+                          sdlog = fit_lnorm$estimate[2]),
+                color = "blue", linetype = "dashed") +
+  labs(title = "TTF Distribution with Fitted Curves",
+       x = "Time To Failure (hours)",
+       y = "Density") +
+  theme_minimal()
+
+# Goodness of fit plots
+p6 <- ggplot(ttf_filtered, aes(sample = TTF)) +
+  stat_qq() +
+  stat_qq_line(color = "#FF5252") +
+  labs(title = "Q-Q Plot") +
+  theme_minimal()
+
+# Print summary statistics
+summary(ttf_filtered$TTF)
+
+# Compare distributions using AIC and BIC
+aic_values <- c(weibull = fit_weibull$aic, 
+                lognormal = fit_lnorm$aic, 
+                exponential = fit_exp$aic)
+bic_values <- c(weibull = fit_weibull$bic, 
+                lognormal = fit_lnorm$bic, 
+                exponential = fit_exp$bic)
+
+print("AIC values:")
+print(aic_values)
+print("BIC values:")
+print(bic_values)
+
+# Kolmogorov-Smirnov test for each distribution
+ks_weibull <- ks.test(ttf_filtered$TTF, "pweibull", 
+                      shape = fit_weibull$estimate[1], 
+                      scale = fit_weibull$estimate[2])
+
+ks_lnorm <- ks.test(ttf_filtered$TTF, "plnorm", 
+                    meanlog = fit_lnorm$estimate[1], 
+                    sdlog = fit_lnorm$estimate[2])
+
+ks_exp <- ks.test(ttf_filtered$TTF, "pexp", 
+                  rate = fit_exp$estimate)
+
+print("Kolmogorov-Smirnov test results:")
+print(list(weibull = ks_weibull, lognormal = ks_lnorm, exponential = ks_exp))
+
+# Arrange plots side by side
+p5 + p6
+```
+
+## Repairing Rates
+
+```{r}
+# Distribution analysis
+
+# Create histogram with density plot
+p1 <- ggplot(ttr, aes(x = TTR)) +
+  geom_histogram(aes(y =after_stat(density)), bins = 30, fill = "#1E88E5", alpha = 0.7) +
+  geom_density(color = "#FF5252", linewidth = 1) +
+  labs(title = "Distribution of Time To Repair",
+       x = "Time To Repair (hours)",
+       y = "Density") +
+  theme_minimal()
+
+# Q-Q plot
+p2 <- ggplot(ttr, aes(sample = TTR)) +
+  stat_qq() +
+  stat_qq_line(color = "#FF5252") +
+  labs(title = "Q-Q Plot of Time To Repair") +
+  theme_minimal()
+
+# Basic statistics
+summary_stats <- summary(ttr$TTR)
+
+# Test for normality
+shapiro_test <- shapiro.test(ttr$TTR)
+
+# Arrange plots side by side
+p1 + p2
+
+```
+
