@@ -187,6 +187,8 @@ frates_cte
 ttr_2017_2021 <- ttr |> 
  filter(Year != 2016 & Year != 2022)
 
+ttf_2017_2021 <- ttf |> 
+ filter(Year != 2016 & Year != 2022)
 
 ```
 
@@ -205,17 +207,40 @@ ggplot(ttr_2017_2021, aes(x = TTR)) +
 
 
 ```{r}
+#| label: best-plot-clusters-years-repair
+#| eval: true
+
+plt_boxplt_years_r <- ggplot(relia, aes(x = Year, y = 1/MTTR)) +
+  geom_boxplot(fill = "grey", color = "black", alpha = 0.3) +  
+  #geom_violin(alpha = 0.5) +
+  geom_jitter(aes(color=Turbine)) +  
+  #labs(y = "Repair Rate [1/h]") +  # Changed to plain text
+  labs(y=expression(mu ~ "[h"^{-1}*"]"), x="") +  
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
+  ggtitle("Yearly Repair Rates of Kelmarsh Wind Turbines")
+
+plot(plt_boxplt_years_r)
+
+```
+
+
+
+
+```{r}
 #| label: ttf-filtered-distribution-analysis
 
 find_best_fit <- function(turbine, duration) {
+
   df <- data.frame(turbine, duration)  
+  
   # Fit distributions
   fit_weibull <- fitdist(df$duration, "weibull")
   fit_lnorm <- fitdist(df$duration, "lnorm")
   fit_exp <- fitdist(df$duration, "exp")  
+  
   # Plot empirical vs theoretical distributions
-  p5 <- ggplot(df, aes(x = duration)) +
-    geom_histogram(aes(y = ..density..), bins = 30, fill = "#1E88E5", alpha = 0.7) +
+  plt <- ggplot(df, aes(x = duration)) +
+    geom_histogram(aes(y = after_stat(density)), bins = 80, fill = "#1E88E5", alpha = 0.7) +
     geom_density(color = "#FF5252", linewidth = 1) +
     stat_function(fun = dweibull, 
                   args = list(shape = fit_weibull$estimate[1], 
@@ -225,23 +250,29 @@ find_best_fit <- function(turbine, duration) {
                   args = list(meanlog = fit_lnorm$estimate[1],
                               sdlog = fit_lnorm$estimate[2]),
                   color = "blue", linetype = "dashed") +
-    labs(title = "Duration Distribution (TTR or TTF) with Fitted Curves",
-         x = "Time To Repair (hours)",
+    stat_function(fun = dexp,
+                  args = list(rate = fit_exp$estimate[1]),
+                  color = "orange", linetype = "dashed") +
+
+    labs(title = paste("Duration Distribution (TTR or TTF) with Fitted Curves", df$turbine[1]),
+         x = "Duration (hours)",
          y = "Density") +
     theme_minimal()  
+
   # Goodness of fit plots
-  p6 <- ggplot(df, aes(sample = duration)) +
-    stat_qq() +
-    stat_qq_line(color = "#FF5252") +
-    labs(title = "Q-Q Plot") +
-    theme_minimal()
+  # p6 <- ggplot(df, aes(sample = duration)) +
+  #   stat_qq() +
+  #   stat_qq_line(color = "#FF5252") +
+  #   labs(title = "Q-Q Plot") +
+  #   theme_minimal()
   
   # Print summary statistics and goodness of fit tests
   summary(df$duration)
   gof_stats <- gofstat(list(fit_weibull, fit_lnorm, fit_exp))
   print(gof_stats) 
-  # Arrange plots side by side
-  p5 + p6
+
+  return(plt)
+  
 }
 
 
@@ -249,7 +280,26 @@ find_best_fit <- function(turbine, duration) {
 
 ```{r}
 
-ttr_2017_2021 |> filter(Turbine == "T01") |> find_best_fit(turbine=Turbine, duration=TTR)
+
+# Loop over each Turbine and apply find_best_fit to TTR
+
+for (turb in unique(ttf_2017_2021$Turbine)) 
+  print("\nTurbine:", str(turb))
+  df_sub <- ttr_2017_2021 |> filter(Turbine == turb)
+  find_best_fit(turbine = df_sub$Turbine, duration = df_sub$TTR)
+
+# find_best_fit(turbine=ttr_2017_2021$Turbine, duration=ttr_2017_2021$TTR)
+
+```
+
+```{r}
+
+
+for (turb in unique_turbines) {
+  print(paste("\nTurbine:", turb))
+  df_sub <- ttf_2017_2021 |> filter(Turbine == turb)
+  find_best_fit(turbine = df_sub$Turbine, duration = df_sub$TTF)
+}
 
 ```
 
