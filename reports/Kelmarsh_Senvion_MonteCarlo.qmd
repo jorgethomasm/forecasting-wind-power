@@ -35,7 +35,10 @@ library(arrow)
 library(here)
 library(dunn.test)
 library(fitdistrplus)
+library(gt)
 library(patchwork)
+library(paletteer)
+
 
 fpath_processed <- "../data/processed"
 fpath_interim <- "../data/interim/"
@@ -70,6 +73,7 @@ ttr <- ttr |>
 
 ```{r}
 #| label: failure-rate-plot
+#| eval: false
 
 plt_bathtub <- ggplot(relia, aes(x=Year, y=`Failure Rate`, colour = Turbine)) +
   ggtitle("Bathtub Curve?") +
@@ -82,12 +86,12 @@ plt_bathtub <- ggplot(relia, aes(x=Year, y=`Failure Rate`, colour = Turbine)) +
 
 ### Between Turbines
 
-
 ```{r}
 #| label: stat-test-frate-turbines
 #| warning: false
 
 # Summary statistics by turbine
+
 relia |>
   group_by(Turbine) |>
   summarise(
@@ -112,15 +116,21 @@ relia <- relia |>
   mutate(Year = as.factor(Year))
 
 plt_boxplt_years <- ggplot(relia, aes(x = Year, y = `Failure Rate`)) +
-  geom_boxplot(fill = "grey", color = "black", alpha = 0.3) +  
-  #geom_violin(alpha = 0.5) +
-  geom_jitter(aes(color=Turbine)) +  
-  #labs(y = "Failure Rate [1/h]") +  # Changed to plain text
+  # geom_boxplot(fill = "grey", color = "black", alpha = 0.3) +  
+  #see::geom_violinhalf(position = position_nudge(x = .2, y = 0), fill = "grey") +
+  geom_violin(alpha = 0.5, fill="grey", adjust=0.75) +
+  geom_dotplot(aes(color=Turbine, fill=Turbine), dotsize = 0.3, binaxis="y", show.legend=TRUE, stackdir= "center", alpha = 0.8) +
+  stat_summary(fun=median, show.legend=FALSE, geom="crossbar", alpha=0.5, width=0.7) +
+  # geom_jitter(aes(color=Turbine)) +    
+  annotate("rect", xmin = 1.5, xmax = 6.5, ymin = -Inf, ymax = Inf, fill = "darkgreen", alpha = 0.1) +
   labs(y=expression(lambda ~ "[h"^{-1}*"]"), x="") +  
-  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +    
+    # scale_color_paletteer_d("nationalparkcolors::Acadia") +
+    # scale_fill_paletteer_d("nationalparkcolors::Acadia") +
+    # paletteer_d("nationalparkcolors::Acadia") +
   ggtitle("Yearly Failure Rates of Kelmarsh Wind Turbines")
 
-plot(plt_boxplt_years/plt_bathtub)
+plot(plt_boxplt_years)
 
 ```
 
@@ -154,16 +164,18 @@ relia_2017_2021 <- relia |>
 ```{r}
 #| label: plot-lambda-per-wt
 
-plot_boxplt_wt <- ggplot(relia_2017_2021, aes(x = Turbine, y = `Failure Rate`, colour=Turbine)) +
-  geom_boxplot() +
-  geom_jitter() +
-  #labs(y = "Failure Rate [1/h]") +
-  labs(y=expression(lambda ~ "[h"^{-1}*"]")) +
-  #facet_wrap(~Year) +  
-  theme(legend.position = "none", axis.title.y = element_text(angle = 0, vjust = 0.5)) +
-  ggtitle("Failure Rates per Turbine at Kelmarsh (2017-2021)")
-  
-plot_boxplt_wt
+img <- cowplot::ggdraw() + cowplot::draw_image("./reports/online_assets/turbine-senvion_mm92.jpg")
+
+plt_boxplt_wt <- ggplot(relia_2017_2021,  aes(x = Turbine, y = `Failure Rate`, colour=Turbine)) + 
+  geom_violin(alpha = 0.5, fill="grey", adjust=0.75) +
+  geom_dotplot(aes(color=Turbine, fill=Turbine), dotsize = 0.3, binaxis="y", show.legend=TRUE, stackdir= "center", alpha = 0.8) +
+  stat_summary(fun=mean, show.legend=FALSE, geom="crossbar", alpha=0.5, width=0.7) +
+  stat_summary(fun = mean, geom = "text", aes(label = round(..y.., 5)), vjust = -1.2, color = "black",fontface = "bold") +  
+  labs(y=expression(lambda ~ "[h"^{-1}*"]"), x="") +  
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
+  ggtitle("Mean Failure Rate per Wind Turbine at Kelmarsh (2017-2021)")
+
+plt_boxplt_years / (plt_boxplt_wt + img)
 
 ```
 
@@ -173,9 +185,35 @@ plot_boxplt_wt
 
 frates_cte <- relia_2017_2021 |>
   group_by(Turbine) |>
-  summarise(mean(`Failure Rate`))
+  summarise(mean(`Failure Rate`)) + mutate(icon="wind-turbine-icon-10")
 
-frates_cte
+frates_cte$icon <- "wind-turbine-icon-10.jpg"
+
+# frates_cte
+
+tbl_fr <- frates_cte |>
+  rename(`Mean Failure Rate [h⁻¹]` = `mean(\`Failure Rate\`)`) |>
+  gt(rowname_col = "Turbine") |>
+  fmt_number(
+    columns = `Mean Failure Rate [h⁻¹]`,
+    decimals = 5
+  ) |>
+  tab_header(
+    title = md("**Mean Failure Rate per Wind Turbine (2017–2021)**"),
+    subtitle = "Kelmarsh Senvion M92"
+  ) |>
+  cols_label(
+    `Mean Failure Rate [h⁻¹]` = md("**Mean Failure Rate [h⁻¹]**")
+  ) |>
+  tab_options(
+    table.font.size = 16,
+    heading.title.font.size = 20,
+    heading.subtitle.font.size = 16,
+    row.striping.background_color = "#f0f8ff"
+  ) |>  opt_row_striping()
+
+
+# plt_boxplt_years / (plt_boxplt_wt + tbl_fr)
 
 ```
 
@@ -210,9 +248,9 @@ ggplot(ttr_2017_2021, aes(x = TTR)) +
 #| label: best-plot-clusters-years-repair
 #| eval: true
 
-plt_boxplt_years_r <- ggplot(relia, aes(x = Year, y = 1/MTTR)) +
-  geom_boxplot(fill = "grey", color = "black", alpha = 0.3) +  
-  #geom_violin(alpha = 0.5) +
+plt_boxplt_years_r <- ggplot(relia, aes(x = Year, y = MTTR)) +
+  #geom_boxplot(fill = "grey", color = "black", alpha = 0.3) +  
+  geom_violin(alpha = 0.5) +
   geom_jitter(aes(color=Turbine)) +  
   #labs(y = "Repair Rate [1/h]") +  # Changed to plain text
   labs(y=expression(mu ~ "[h"^{-1}*"]"), x="") +  
@@ -224,7 +262,21 @@ plot(plt_boxplt_years_r)
 ```
 
 
+```{r}
+#| label: best-plot-clusters-turbines-repair
+#| eval: true
 
+plt_boxplt_turbines_r <- ggplot(relia_2017_2021, aes(x = Turbine, y = 1/MTTR)) +
+  geom_boxplot(fill = "grey", color = "black", alpha = 0.3) +  
+  # geom_violin(alpha = 0.5) +
+  geom_jitter(aes(color=Turbine)) +  
+  #labs(y = "Repair Rate [1/h]") +  # Changed to plain text
+  labs(y=expression(mu ~ "[h"^{-1}*"]"), x="") +  
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
+  ggtitle("Yearly Repair Rates of Kelmarsh Wind Turbines")
+
+plot(plt_boxplt_turbines_r)
+```
 
 ```{r}
 #| label: ttf-filtered-distribution-analysis
