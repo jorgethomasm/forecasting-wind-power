@@ -35,7 +35,7 @@ library(arrow)
 library(here)
 library(dunn.test)
 library(fitdistrplus)
-library(gt)
+# library(gt)
 library(patchwork)
 # library(paletteer)
 
@@ -80,16 +80,7 @@ plt_bathtub <- ggplot(relia, aes(x=Year, y=`Failure Rate`, colour = Turbine)) +
 #| warning: true
 
 # Summary statistics by turbine
-
-relia |>
-  group_by(Turbine) |>
-  summarise(
-    mean = mean(`Failure Rate`),
-    median = median(`Failure Rate`),
-    sd = sd(`Failure Rate`),
-    n = n())
-
-# summary_stats
+relia |> group_by(Turbine) |> summarise(mean = mean(`Failure Rate`), median = median(`Failure Rate`), sd = sd(`Failure Rate`), n = n())
 
 dunn_result_wt <- dunn.test(relia$`Failure Rate`, relia$Turbine, method="none", kw=TRUE, label=TRUE, wrap=TRUE)
 
@@ -114,8 +105,6 @@ plt_boxplt_years <- ggplot(relia, aes(x = Year, y = `Failure Rate`)) +
   labs(y=expression(lambda ~ "[h"^{-1}*"]"), x="") +  
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +     
   ggtitle("Yearly Failure Rates of Kelmarsh Wind Turbines - Senvion MM92")
-
-plot(plt_boxplt_years)
 
 ```
 
@@ -154,7 +143,7 @@ plt_boxplt_wt <- ggplot(relia_2017_2021,  aes(x = Turbine, y = `Failure Rate`, c
   geom_violin(alpha = 0.5, fill="grey", adjust=0.75, show.legend=FALSE) +
   geom_dotplot(aes(color=Turbine, fill=Turbine), dotsize = 0.3, binaxis="y", show.legend=FALSE, stackdir= "center", alpha = 0.8) +
   stat_summary(fun=mean, show.legend=FALSE, geom="crossbar", alpha=0.5, width=0.7) +
-  stat_summary(fun = mean, geom = "text", aes(label = round(..y.., 5)), vjust = -1.2, color = "black",fontface = "bold") +  
+  stat_summary(fun = mean, geom = "text", aes(label = round(after_stat(y), 5)), vjust = -1.2, color = "black",fontface = "bold") +  
   labs(y=expression(lambda ~ "[h"^{-1}*"]"), x="") +  
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
   ggtitle("Mean Failure Rate per Turbine at Kelmarsh (2017-2021)")
@@ -164,17 +153,19 @@ plt_frate <- plt_boxplt_years / (plt_boxplt_wt + img)
 plot(plt_frate)
 
 # Save high quality PNG of plt_frate
-ggsave("./reports/online_assets/plt_frate.png", plt_frate, width = 12, height = 8, dpi = 300, bg = "white")
+# ggsave("./reports/online_assets/plt_frate.png", plt_frate, width = 12, height = 8, dpi = 300, bg = "white")
 
 ```
 
 ```{r}
 #| label: constant-frates-per-turbine
-#| eval: true
+#| eval: false
 
 frates_cte <- relia_2017_2021 |>
   group_by(Turbine) |>
-  summarise(mean(`Failure Rate`)) + mutate(icon="wind-turbine-icon-10")
+  summarise(mean(`Failure Rate`))
+
+frates_cte
 ```
 
 ## Repairing Rates
@@ -184,6 +175,8 @@ frates_cte <- relia_2017_2021 |>
 
 ttr_2017_2021 <- ttr |> 
  filter(Year != 2016 & Year != 2022)
+
+# TODO: censor "last seen" TTFs (yearly transition)
 
 ttf_2017_2021 <- ttf |> 
  filter(Year != 2016 & Year != 2022)
@@ -199,7 +192,6 @@ ggplot(ttr_2017_2021, aes(x = TTR)) +
        x = "Time To Repair (hours)",
        y = "Count") +
   theme_minimal()
-
 
 ```
 
@@ -238,8 +230,10 @@ plt_boxplt_turbines_r <- ggplot(relia_2017_2021, aes(x = Turbine, y = 1/MTTR)) +
 plot(plt_boxplt_turbines_r)
 ```
 
+## Fit pdf to Repair times
+
 ```{r}
-#| label: ttf-filtered-distribution-analysis
+#| label: function
 
 find_best_fit <- function(turbine, duration) {
 
@@ -270,32 +264,22 @@ find_best_fit <- function(turbine, duration) {
          x = "Duration (hours)",
          y = "Density") +
     theme_minimal()  
-
-  # Goodness of fit plots
-  # p6 <- ggplot(df, aes(sample = duration)) +
-  #   stat_qq() +
-  #   stat_qq_line(color = "#FF5252") +
-  #   labs(title = "Q-Q Plot") +
-  #   theme_minimal()
   
-  # Print summary statistics and goodness of fit tests
   summary(df$duration)
   gof_stats <- gofstat(list(fit_weibull, fit_lnorm, fit_exp))
   print(gof_stats) 
 
-  return(plt)
+  plot(plt)
   
 }
-
 
 ```
 
 ```{r}
 
-
 # Loop over each Turbine and apply find_best_fit to TTR
 
-for (turb in unique(ttf_2017_2021$Turbine)) 
+for (turb in unique(ttr_2017_2021$Turbine)) {
   print("\nTurbine:", str(turb))
   df_sub <- ttr_2017_2021 |> filter(Turbine == turb)
   find_best_fit(turbine = df_sub$Turbine, duration = df_sub$TTR)
@@ -304,75 +288,35 @@ for (turb in unique(ttf_2017_2021$Turbine))
 
 ```
 
+## Parameters per Wind Turbine
+
 ```{r}
+#| label: ttr-lognormal-fit-list
 
+# Fit a lognormal distribution to TTR for each Turbine using lapply
+ttr_lnorm_fits <- lapply(split(ttr_2017_2021, ttr_2017_2021$Turbine), function(df) {fitdist(df$TTR, "lnorm")})
 
-for (turb in unique_turbines) {
-  print(paste("\nTurbine:", turb))
-  df_sub <- ttf_2017_2021 |> filter(Turbine == turb)
-  find_best_fit(turbine = df_sub$Turbine, duration = df_sub$TTF)
-}
+# Named list: each element is a fitdist object for a Turbine
+ttr_lnorm_fits
 
 ```
 
-```{r}
 
-
-
-# Fit distributions
-fit_weibull <- fitdist(ttr_2017_2021$TTR, "weibull")
-fit_lnorm <- fitdist(ttr_2017_2021$TTR, "lnorm")
-fit_exp <- fitdist(ttr_2017_2021$TTR, "exp")
-
-# Plot empirical vs theoretical distributions
-p5 <- ggplot(ttr_2017_2021, aes(x = TTR)) +
-  geom_histogram(aes(y = ..density..), bins = 30, fill = "#1E88E5", alpha = 0.7) +
-  geom_density(color = "#FF5252", linewidth = 1) +
-  stat_function(fun = dweibull, 
-                args = list(shape = fit_weibull$estimate[1], 
-                            scale = fit_weibull$estimate[2]),
-                color = "darkgreen", linetype = "dashed") +
-  stat_function(fun = dlnorm,
-                args = list(meanlog = fit_lnorm$estimate[1],
-                            sdlog = fit_lnorm$estimate[2]),
-                color = "blue", linetype = "dashed") +
-  labs(title = "TTR Distribution with Fitted Curves",
-       x = "Time To Repair (hours)",
-       y = "Density") +
-  theme_minimal()
-
-# Goodness of fit plots
-p6 <- ggplot(ttr_2017_2021, aes(sample = TTR)) +
-  stat_qq() +
-  stat_qq_line(color = "#FF5252") +
-  labs(title = "Q-Q Plot") +
-  theme_minimal()
-
-# Print summary statistics and goodness of fit tests
-summary(ttr_2017_2021$TTR)
-gof_stats <- gofstat(list(fit_weibull, fit_lnorm, fit_exp))
-print(gof_stats)
-
-# Arrange plots side by side
-p5 + p6
-
-```
-
+### Fits Plots
 ```{r}
 #| label: ttr-lognormal-fit-plot
 
-# Fit lognormal distribution to TTR
-# fit_lnorm <- fitdist(ttr_2017_2021$TTR, "lnorm")
-
 # Plot histogram with fitted lognormal curve
 ggplot(ttr_2017_2021, aes(x = TTR)) +
-  geom_histogram(aes(y = ..density..), bins = 80, fill = "#90caf9", color = "black", alpha = 0.7) +
-  stat_function(fun = dlnorm, args = list(meanlog = fit_lnorm$estimate[1], sdlog = fit_lnorm$estimate[2]), color = "#1565c0", size = 1.2) 
+  geom_histogram(aes(y = ..density..), bins = 160, fill = "#90caf9", color = "black", alpha = 0.7) +
+  stat_function(fun = dlnorm, args = list(meanlog = fit_lnorm$estimate[1], sdlog = fit_lnorm$estimate[2]), color = "#1565c0", size = 1.2) +
+  facet_grid(rows=vars(Turbine))
 ```
 
 
 ```{r}
-
+#| label: box-cox
+#| eval: false
 boxcox_trans <- MASS::boxcox(lm(TTR ~ 1, data = ttr_2017_2021), lambda = seq(-1, 1), plotit = TRUE)
 
 boxcox_lambda <- as.numeric(boxcox_trans$x[which.max(boxcox_trans$y)])
@@ -380,7 +324,6 @@ boxcox_lambda <- as.numeric(boxcox_trans$x[which.max(boxcox_trans$y)])
 # New transformed response variable
 ttr_2017_2021 <- ttr_2017_2021 |>
   mutate(TTR_bc = (TTR^boxcox_lambda - 1) / boxcox_lambda)
-
 
 
 ttr_2017_2021 |>  
@@ -396,31 +339,3 @@ ttr_2017_2021 |>
 
 ```
 
-
-```{r}
-
-# Create histogram with density plot
-p1 <- ggplot(ttr_2017_2021, aes(x = TTR)) +
-  geom_histogram(aes(y =after_stat(density)), bins = 30, fill = "#1E88E5", alpha = 0.7) +
-  geom_density(color = "#FF5252", linewidth = 1) +
-  labs(title = "Distribution of Time To Repair",
-       x = "Time To Repair (hours)",
-       y = "Density") +
-  theme_minimal()
-
-# Q-Q plot
-p2 <- ggplot(ttr_2017_2021, aes(sample = TTR)) +
-  stat_qq() +
-  stat_qq_line(color = "#FF5252") +
-  labs(title = "Q-Q Plot of Time To Repair") +
-  theme_minimal()
-
-# Basic statistics
-summary_stats <- summary(ttr_2017_2021$TTR)
-
-# Test for normality
-shapiro_test <- shapiro.test(ttr_2017_2021$TTR)
-
-# Arrange plots side by side
-p1 + p2
-```
