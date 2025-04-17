@@ -37,8 +37,7 @@ library(dunn.test)
 library(fitdistrplus)
 library(gt)
 library(patchwork)
-library(paletteer)
-
+# library(paletteer)
 
 fpath_processed <- "../data/processed"
 fpath_interim <- "../data/interim/"
@@ -51,20 +50,11 @@ relia <- read_parquet(here("data", "processed", "Kelmarsh_reliability_paramaters
 ttf <- read_parquet(here("data", "processed", "Kelmarsh_time-to-failure_2016_2022_n929_cols8.parquet"))
 ttr <- read_parquet(here("data", "processed", "Kelmarsh_time-to-repair_2016_2022_n889_cols8.parquet"))
 
-# to categoricals
-cats_feats <- c("Year", "Turbine")
-
-relia <- relia |>  
-  mutate(Turbine = as.factor(Turbine))
-
+relia <- relia |> mutate(Turbine = as.factor(Turbine))
 relia$icon <- NULL
 
-ttf <- ttf |>
-  mutate(across(all_of(cats_feats), ~ factor(.x, ordered = TRUE)))
-
-ttr <- ttr |>
-  mutate(across(all_of(cats_feats), ~ factor(.x, ordered = TRUE)))       
-
+ttf <- ttf |> mutate(across(all_of( c("Year", "Turbine")), ~ factor(.x, ordered = TRUE)))
+ttr <- ttr |> mutate(across(all_of( c("Year", "Turbine")), ~ factor(.x, ordered = TRUE)))       
 ```
 
 ## Failure Rate Analysis 
@@ -81,14 +71,13 @@ plt_bathtub <- ggplot(relia, aes(x=Year, y=`Failure Rate`, colour = Turbine)) +
   #facet_grid(~Turbine) + 
   labs(y=expression(lambda ~ "[h"^{-1}*"]")) +
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5))
-
 ```
 
 ### Between Turbines
 
 ```{r}
 #| label: stat-test-frate-turbines
-#| warning: false
+#| warning: true
 
 # Summary statistics by turbine
 
@@ -112,8 +101,7 @@ dunn_result_wt <- dunn.test(relia$`Failure Rate`, relia$Turbine, method="none", 
 #| label: best-plot-clusters-years
 #| eval: true
 
-relia <- relia |>  
-  mutate(Year = as.factor(Year))
+relia <- relia |> mutate(Year = as.factor(Year))
 
 plt_boxplt_years <- ggplot(relia, aes(x = Year, y = `Failure Rate`)) +
   # geom_boxplot(fill = "grey", color = "black", alpha = 0.3) +  
@@ -124,11 +112,8 @@ plt_boxplt_years <- ggplot(relia, aes(x = Year, y = `Failure Rate`)) +
   # geom_jitter(aes(color=Turbine)) +    
   annotate("rect", xmin = 1.5, xmax = 6.5, ymin = -Inf, ymax = Inf, fill = "darkgreen", alpha = 0.1) +
   labs(y=expression(lambda ~ "[h"^{-1}*"]"), x="") +  
-  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +    
-    # scale_color_paletteer_d("nationalparkcolors::Acadia") +
-    # scale_fill_paletteer_d("nationalparkcolors::Acadia") +
-    # paletteer_d("nationalparkcolors::Acadia") +
-  ggtitle("Yearly Failure Rates of Kelmarsh Wind Turbines")
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +     
+  ggtitle("Yearly Failure Rates of Kelmarsh Wind Turbines - Senvion MM92")
 
 plot(plt_boxplt_years)
 
@@ -136,7 +121,7 @@ plot(plt_boxplt_years)
 
 ```{r}
 #| label: stat-test-frate-years
-#| eval: false
+#| eval: true
 
 # Summary statistics by Year
 relia |>
@@ -156,8 +141,7 @@ Years from 2017 and 2021 represents a cluster of the Senvion M92 wind turbines.
 ```{r}
 #| label: filter-2017to2021
 
-relia_2017_2021 <- relia |> 
- filter(Year != 2016 & Year != 2022)
+relia_2017_2021 <- relia |> filter(Year != 2016 & Year != 2022)
 
 ```
 
@@ -167,7 +151,7 @@ relia_2017_2021 <- relia |>
 img <- cowplot::ggdraw() + cowplot::draw_image("./reports/online_assets/turbine-senvion_mm92.jpg")
 
 plt_boxplt_wt <- ggplot(relia_2017_2021,  aes(x = Turbine, y = `Failure Rate`, colour=Turbine)) + 
-  geom_violin(alpha = 0.5, fill="grey", adjust=0.75) +
+  geom_violin(alpha = 0.5, fill="grey", adjust=0.75, show.legend=FALSE) +
   geom_dotplot(aes(color=Turbine, fill=Turbine), dotsize = 0.3, binaxis="y", show.legend=FALSE, stackdir= "center", alpha = 0.8) +
   stat_summary(fun=mean, show.legend=FALSE, geom="crossbar", alpha=0.5, width=0.7) +
   stat_summary(fun = mean, geom = "text", aes(label = round(..y.., 5)), vjust = -1.2, color = "black",fontface = "bold") +  
@@ -175,7 +159,12 @@ plt_boxplt_wt <- ggplot(relia_2017_2021,  aes(x = Turbine, y = `Failure Rate`, c
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
   ggtitle("Mean Failure Rate per Turbine at Kelmarsh (2017-2021)")
 
-plt_boxplt_years / (plt_boxplt_wt + img)
+plt_frate <- plt_boxplt_years / (plt_boxplt_wt + img)
+
+plot(plt_frate)
+
+# Save high quality PNG of plt_frate
+ggsave("./reports/online_assets/plt_frate.png", plt_frate, width = 12, height = 8, dpi = 300, bg = "white")
 
 ```
 
