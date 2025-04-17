@@ -34,7 +34,7 @@ library(plotly)
 library(arrow)
 library(here)
 library(dunn.test)
-# library(fitdistrplus)
+library(fitdistrplus)
 library(patchwork)
 
 fpath_processed <- "../data/processed"
@@ -187,6 +187,156 @@ frates_cte
 ttr_2017_2021 <- ttr |> 
  filter(Year != 2016 & Year != 2022)
 
+
+```
+
+```{r}
+
+ggplot(ttr_2017_2021, aes(x = TTR)) +
+  geom_histogram(bins = 30, fill = "#1E88E5", color = "black", alpha = 0.7) +
+  facet_grid(~Turbine) + 
+  labs(title = "Histogram of Time To Repair (TTR)",
+       x = "Time To Repair (hours)",
+       y = "Count") +
+  theme_minimal()
+
+
+```
+
+
+```{r}
+#| label: ttf-filtered-distribution-analysis
+
+find_best_fit <- function(turbine, duration) {
+  df <- data.frame(turbine, duration)  
+  # Fit distributions
+  fit_weibull <- fitdist(df$duration, "weibull")
+  fit_lnorm <- fitdist(df$duration, "lnorm")
+  fit_exp <- fitdist(df$duration, "exp")  
+  # Plot empirical vs theoretical distributions
+  p5 <- ggplot(df, aes(x = duration)) +
+    geom_histogram(aes(y = ..density..), bins = 30, fill = "#1E88E5", alpha = 0.7) +
+    geom_density(color = "#FF5252", linewidth = 1) +
+    stat_function(fun = dweibull, 
+                  args = list(shape = fit_weibull$estimate[1], 
+                              scale = fit_weibull$estimate[2]),
+                  color = "darkgreen", linetype = "dashed") +
+    stat_function(fun = dlnorm,
+                  args = list(meanlog = fit_lnorm$estimate[1],
+                              sdlog = fit_lnorm$estimate[2]),
+                  color = "blue", linetype = "dashed") +
+    labs(title = "Duration Distribution (TTR or TTF) with Fitted Curves",
+         x = "Time To Repair (hours)",
+         y = "Density") +
+    theme_minimal()  
+  # Goodness of fit plots
+  p6 <- ggplot(df, aes(sample = duration)) +
+    stat_qq() +
+    stat_qq_line(color = "#FF5252") +
+    labs(title = "Q-Q Plot") +
+    theme_minimal()
+  
+  # Print summary statistics and goodness of fit tests
+  summary(df$duration)
+  gof_stats <- gofstat(list(fit_weibull, fit_lnorm, fit_exp))
+  print(gof_stats) 
+  # Arrange plots side by side
+  p5 + p6
+}
+
+
+```
+
+```{r}
+
+ttr_2017_2021 |> filter(Turbine == "T01") |> find_best_fit(turbine=Turbine, duration=TTR)
+
+```
+
+```{r}
+
+
+
+# Fit distributions
+fit_weibull <- fitdist(ttr_2017_2021$TTR, "weibull")
+fit_lnorm <- fitdist(ttr_2017_2021$TTR, "lnorm")
+fit_exp <- fitdist(ttr_2017_2021$TTR, "exp")
+
+# Plot empirical vs theoretical distributions
+p5 <- ggplot(ttr_2017_2021, aes(x = TTR)) +
+  geom_histogram(aes(y = ..density..), bins = 30, fill = "#1E88E5", alpha = 0.7) +
+  geom_density(color = "#FF5252", linewidth = 1) +
+  stat_function(fun = dweibull, 
+                args = list(shape = fit_weibull$estimate[1], 
+                            scale = fit_weibull$estimate[2]),
+                color = "darkgreen", linetype = "dashed") +
+  stat_function(fun = dlnorm,
+                args = list(meanlog = fit_lnorm$estimate[1],
+                            sdlog = fit_lnorm$estimate[2]),
+                color = "blue", linetype = "dashed") +
+  labs(title = "TTR Distribution with Fitted Curves",
+       x = "Time To Repair (hours)",
+       y = "Density") +
+  theme_minimal()
+
+# Goodness of fit plots
+p6 <- ggplot(ttr_2017_2021, aes(sample = TTR)) +
+  stat_qq() +
+  stat_qq_line(color = "#FF5252") +
+  labs(title = "Q-Q Plot") +
+  theme_minimal()
+
+# Print summary statistics and goodness of fit tests
+summary(ttr_2017_2021$TTR)
+gof_stats <- gofstat(list(fit_weibull, fit_lnorm, fit_exp))
+print(gof_stats)
+
+# Arrange plots side by side
+p5 + p6
+
+```
+
+```{r}
+#| label: ttr-lognormal-fit-plot
+
+# Fit lognormal distribution to TTR
+# fit_lnorm <- fitdist(ttr_2017_2021$TTR, "lnorm")
+
+# Plot histogram with fitted lognormal curve
+ggplot(ttr_2017_2021, aes(x = TTR)) +
+  geom_histogram(aes(y = ..density..), bins = 80, fill = "#90caf9", color = "black", alpha = 0.7) +
+  stat_function(fun = dlnorm, args = list(meanlog = fit_lnorm$estimate[1], sdlog = fit_lnorm$estimate[2]), color = "#1565c0", size = 1.2) 
+```
+
+
+```{r}
+
+boxcox_trans <- MASS::boxcox(lm(TTR ~ 1, data = ttr_2017_2021), lambda = seq(-1, 1), plotit = TRUE)
+
+boxcox_lambda <- as.numeric(boxcox_trans$x[which.max(boxcox_trans$y)])
+
+# New transformed response variable
+ttr_2017_2021 <- ttr_2017_2021 |>
+  mutate(TTR_bc = (TTR^boxcox_lambda - 1) / boxcox_lambda)
+
+
+
+ttr_2017_2021 |>  
+  ggplot(aes(x = TTR_bc)) +  
+  geom_histogram(bins = 50, color = "seagreen", fill = "seagreen", alpha = 0.5) +  
+  labs(x = "TTR [Box-Cox]")
+
+ttr_2017_2021 |> 
+  ggplot(aes(sample = TTR_bc)) + 
+  stat_qq(color = "seagreen", alpha = 0.5) + 
+  stat_qq_line(color = "seagreen") +   
+  labs(y = "TTR\n[Box-Cox]", x = "Theoretical Quantiles (Norm. Dist.)")
+
+```
+
+
+```{r}
+
 # Create histogram with density plot
 p1 <- ggplot(ttr_2017_2021, aes(x = TTR)) +
   geom_histogram(aes(y =after_stat(density)), bins = 30, fill = "#1E88E5", alpha = 0.7) +
@@ -211,6 +361,4 @@ shapiro_test <- shapiro.test(ttr_2017_2021$TTR)
 
 # Arrange plots side by side
 p1 + p2
-
 ```
-
