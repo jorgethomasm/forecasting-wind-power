@@ -137,7 +137,7 @@ relia_2017_2021 <- relia |> filter(Year != 2016 & Year != 2022)
 ```{r}
 #| label: plot-lambda-per-wt
 
-img <- cowplot::ggdraw() + cowplot::draw_image("./online_assets/turbine-senvion_mm92.jpg")
+img <- cowplot::ggdraw() + cowplot::draw_image("./reports/online_assets/turbine-senvion_mm92.jpg")
 
 plt_boxplt_wt <- ggplot(relia_2017_2021,  aes(x = Turbine, y = `Failure Rate`, colour=Turbine)) + 
   geom_violin(alpha = 0.5, fill="grey", adjust=0.75, show.legend=FALSE) +
@@ -176,7 +176,6 @@ frates_cte
 ttr_2017_2021 <- ttr |> 
  filter(Year != 2016 & Year != 2022)
 
-# TODO: censor "last seen" TTFs (yearly transition)
 
 ttf_2017_2021 <- ttf |> 
  filter(Year != 2016 & Year != 2022)
@@ -233,56 +232,14 @@ plot(plt_boxplt_turbines_r)
 ## Fit pdf to Repair times
 
 ```{r}
-#| label: function
-
-find_best_fit <- function(turbine, duration) {
-
-  df <- data.frame(turbine, duration)  
-  
-  # Fit distributions
-  fit_weibull <- fitdist(df$duration, "weibull")
-  fit_lnorm <- fitdist(df$duration, "lnorm")
-  fit_exp <- fitdist(df$duration, "exp")  
-  
-  # Plot empirical vs theoretical distributions
-  plt <- ggplot(df, aes(x = duration)) +
-    geom_histogram(aes(y = after_stat(density)), bins = 80, fill = "#1E88E5", alpha = 0.7) +
-    geom_density(color = "#FF5252", linewidth = 1) +
-    stat_function(fun = dweibull, 
-                  args = list(shape = fit_weibull$estimate[1], 
-                              scale = fit_weibull$estimate[2]),
-                  color = "darkgreen", linetype = "dashed") +
-    stat_function(fun = dlnorm,
-                  args = list(meanlog = fit_lnorm$estimate[1],
-                              sdlog = fit_lnorm$estimate[2]),
-                  color = "blue", linetype = "dashed") +
-    stat_function(fun = dexp,
-                  args = list(rate = fit_exp$estimate[1]),
-                  color = "orange", linetype = "dashed") +
-
-    labs(title = paste("Distribution of Duration Samples with Fitted Curves", df$turbine[1]),
-         x = "Duration (hours)",
-         y = "Density") +
-    theme_minimal()  
-  
-  summary(df$duration)
-  gof_stats <- gofstat(list(fit_weibull, fit_lnorm, fit_exp))
-  print(gof_stats) 
-
-  plot(plt)
-  
-}
-
-```
-
-```{r}
 
 # Loop over each Turbine and apply find_best_fit to TTR
 
 for (turb in unique(ttr_2017_2021$Turbine)) {
   print("\nTurbine:", str(turb))
   df_sub <- ttr_2017_2021 |> filter(Turbine == turb)
-  find_best_fit(turbine = df_sub$Turbine, duration = df_sub$TTR)
+  find_best_fit(turbine = df_sub$Turbine, duration = df_sub$TTR) 
+  }
 
 # find_best_fit(turbine=ttr_2017_2021$Turbine, duration=ttr_2017_2021$TTR)
 

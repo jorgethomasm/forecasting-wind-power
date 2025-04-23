@@ -121,6 +121,63 @@ calc_yeo_johnson <- function(y, data)  {
 }
 
 
+#' Find and Compare Best-Fit Distributions for Repair Times
+#'
+#' Fits Weibull, Lognormal, and Exponential distributions to a vector of repair times (duration),
+#' compares their goodness-of-fit, and plots the empirical and fitted distributions.
+#'
+#' @param turbine A vector or factor indicating the turbine (for labeling purposes).
+#' @param duration A numeric vector of repair times (e.g., Time To Repair or Time To Failure).
+#'
+#' @details
+#' The function fits Weibull, Lognormal, and Exponential distributions to the provided duration data
+#' using the \code{fitdistrplus} package. It then overlays the fitted probability density functions
+#' on a histogram and kernel density estimate of the empirical data. Goodness-of-fit statistics are printed
+#' to help select the best distribution.
+#'
+#' @return Invisibly returns the goodness-of-fit statistics (as a list) and displays a plot.
+#' @import ggplot2
+#' @importFrom fitdistrplus fitdist gofstat
+#' @examples
+#' \dontrun{
+#' find_best_fit(turbine = my_data$Turbine, duration = my_data$TTR)
+#' }
+#' @export
+find_best_fit <- function(turbine, duration) {
+
+  df <- data.frame(turbine, duration)  
+  # Fit distributions
+  fit_weibull <- fitdistrplus::fitdist(df$duration, "weibull")
+  fit_lnorm <- fitdistrplus::fitdist(df$duration, "lnorm")
+  fit_exp <- fitdistrplus::fitdist(df$duration, "exp")
+  # Plot empirical vs theoretical distributions
+  plt <- ggplot(df, aes(x = duration)) +
+    geom_histogram(aes(y = after_stat(density)), bins = 80, fill = "#1E88E5", alpha = 0.7) +
+    geom_density(color = "#FF5252", linewidth = 1) +
+    stat_function(fun = dweibull, 
+                  args = list(shape = fit_weibull$estimate[1], 
+                              scale = fit_weibull$estimate[2]),
+                  color = "darkgreen", linetype = "dashed") +
+    stat_function(fun = dlnorm,
+                  args = list(meanlog = fit_lnorm$estimate[1],
+                              sdlog = fit_lnorm$estimate[2]),
+                  color = "blue", linetype = "dashed") +
+    stat_function(fun = dexp,
+                  args = list(rate = fit_exp$estimate[1]),
+                  color = "orange", linetype = "dashed") +
+
+    labs(title = paste("Distribution of Duration Samples with Fitted Curves", df$turbine[1]),
+         x = "Duration (hours)",
+         y = "Density") +
+    theme_minimal()
+  
+  summary(df$duration)
+  gof_stats <- fitdistrplus::gofstat(list(fit_weibull, fit_lnorm, fit_exp))
+  print(gof_stats)
+  plot(plt)
+}
+
+
 # get mode function
 # df_all |>
 #   count(MasVnrType, name = "Count", sort = TRUE) |>
