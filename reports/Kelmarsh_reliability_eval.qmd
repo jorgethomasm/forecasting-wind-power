@@ -54,7 +54,7 @@ import duckdb
 import polars as pl
 import polars.selectors as cs
 import plotly.express as px
-from great_tables import GT, md
+from great_tables import GT, md, style, loc
 
 fpath_processed = "../data/processed/"
 fpath_interim = "../data/interim/"
@@ -63,16 +63,46 @@ fpath_online = "./online_assets/"
 
 ```{python}
 #| label: Read-Data
-#| eval: false
+#| eval: true
 
 tstatus = pl.read_parquet(f"{fpath_interim}Kelmarsh_Turbines_Status_20160114_20230109_n385133_cols12.parquet")
-
-# tstatus
 ```
+
+## Events Catalogue and Status
+
+```{python}
+#| label: Events-Catalogue
+#| eval: true
+#| warning: true
+
+events_catalogue = (
+    tstatus.group_by("IEC category", "Status")
+    .agg(pl.len().alias("Count"))    
+    .pivot(
+        values="Count",
+        index="IEC category",
+        on="Status"
+    )
+    .fill_null(0)
+)
+
+GT(events_catalogue).tab_source_note(source_note='Note: Only "Forced outage" events with status "Stop" are considered for the evaluation, i.e., 892 events.')
+```
+
 
 ```{python}
 #| label: Filter-Stops
-#| eval: false
+#| eval: true
+
+null_stop_events = pl.sql(    
+    """
+    SELECT * EXCLUDE ("Custom contract category")    
+    FROM tstatus
+    WHERE "IEC category" IS NULL AND "Status" = 'Stop'
+
+    """).collect()
+
+# null_stop_events['Status'].unique()
 
 curtailment = pl.sql(    
     """
@@ -88,13 +118,16 @@ stops = pl.sql(
     FROM tstatus
     WHERE "Status" = 'Stop'
     """).collect()
+
+# stops.group_by('IEC category').agg(pl.len().alias("Stop Events"))
 ```
 
 ```{python}
 #| label: Filter-Forced-Outages
-#| eval: false
+#| eval: true
 
 # Aggregate tables using SQL syntax
+
 foutages = pl.sql(
     """
     SELECT * 
@@ -113,21 +146,20 @@ foutages = foutages.with_columns(
     pl.when(pl.col("TTF") < 0).then(None).otherwise(pl.col("TTF")).alias("TTF")
 )
 
-
 ```
 
 ```{python}
 #| label: write-foutages-online
 #| eval: false
 
-foutages.write_parquet(f"{fpath_online}/{"Kelmarsh_Turbines_ForcedOutages_20160114_20230109_n892_cols12.parquet"}")
+# foutages.write_parquet(f"{fpath_online}/{"Kelmarsh_Turbines_ForcedOutages_20160114_20230109_n892_cols12.parquet"}")
 
 ```
 ```{python}
 #| label: read-filtered-fo
-#| eval: true
+#| eval: false
 
-foutages = pl.read_parquet("./online_assets/Kelmarsh_Turbines_ForcedOutages_20160114_20230109_n892_cols12.parquet")
+# foutages = pl.read_parquet("./online_assets/Kelmarsh_Turbines_ForcedOutages_20160114_20230109_n892_cols12.parquet")
 
 # foutages
 
@@ -135,10 +167,9 @@ foutages = pl.read_parquet("./online_assets/Kelmarsh_Turbines_ForcedOutages_2016
 
 ```{python}
 #| label: Binary-Plot
+#| eval: true
 
-#'
 # Generate data frame with 0-1 states
-# '
 
 dtstarts = foutages.select(["Timestamp start", "Status", "Message",  "wt"]).rename({"Timestamp start": "Timestamp"})
 
@@ -152,21 +183,21 @@ tstates= tstates.with_columns(
     pl.col("Timestamp").dt.year().alias("Year")    
     )
 
+# Extract last year 
 last_year = tstates["Year"].unique().max()
 
-tstates= tstates.with_columns(    
-    (pl.col("Year").cast(str) + "-" + pl.col("wt")).alias("Year_wt")
-    ).sort(["Year_wt", "Timestamp"])
-
-tstates = tstates.drop_nulls()
+tstates= tstates.sort(["Year", "wt", "Timestamp"]).drop_nulls()
+tstates.head()
 ```
 
 ```{python}
 #| label: e-o-y-algo
 
+# TTF (or TTR) censoring  algorithm per Turbine per year.
+
 # ---- 1) Id  last row per year per wt
 
-last_rows = tstates.group_by("Year_wt").last().sort("Year")
+last_rows = tstates.group_by(["Year", "wt"]).last().sort("Year")
 
 # ---- 2) Create new rows with the same (last seen) State
 
@@ -174,7 +205,7 @@ last_rows = tstates.group_by("Year_wt").last().sort("Year")
 
 last_rows = last_rows.with_columns(    
     pl.col("Timestamp").dt.truncate("1y").dt.offset_by("1y").dt.offset_by("-1s").alias("Timestamp"),  # Ceil timestamp
-    pl.lit("Last seen").alias("Message")
+    pl.lit("Last-seen-Censored").alias("Message")
     )
 
 # ---- 3) Create first row df from last_rows df
@@ -185,25 +216,26 @@ first_rows = last_rows.with_columns(
 
 # ---- 4) df with new rows to be added
 
-new_rows = pl.concat([first_rows, last_rows])
+new_censored_rows = pl.concat([first_rows, last_rows])
 
-# Recompute Year_wt
-new_rows = new_rows.with_columns(
+# Add Year columns
+new_censored_rows = new_censored_rows.with_columns(
     pl.col("Timestamp").dt.year().alias("Year")    
 )
 
-new_rows = new_rows.with_columns(   
-    (pl.col("Year").cast(str) + "-" + pl.col("wt")).alias("Year_wt")
-)
+# Recompute Year_wt
+# new_censored_rows = new_censored_rows.with_columns(   
+#     (pl.col("Year").cast(str) + "-" + pl.col("wt")).alias("Year_wt")
+# )
 
 # ---- 5) Add new rows to close tstates
-new_rows = new_rows.select(tstates.columns)  # reorder rows
 
-tstates = pl.concat([tstates, new_rows]).sort(["Year_wt", "Timestamp"])
+new_censored_rows = new_censored_rows.select(tstates.columns)  
 
+# reorder rows
+tstates = pl.concat([tstates, new_censored_rows]).sort(["wt", "Timestamp"])
 
 # ---- 6) Drop columns Year > 2022  
-
 tstates = tstates.filter(pl.col("Year") <= last_year)
 
 ```
@@ -361,36 +393,36 @@ tstates_dur = tstates.with_columns(
     (pl.col("Timestamp").diff().dt.total_seconds()/3_600).alias("Duration").shift(-1)
 )
 
+# CENSOR data around years transitions
+
 tstates_dur = tstates_dur.with_columns(
-    pl.when(pl.col("Duration") <= 0)
+    pl.when((pl.col("Duration") <= 0) | (pl.col("Message") =="Last-seen-Censored"))
     .then(None)
     .otherwise(pl.col("Duration"))
     .alias("Duration")    
 )
 
-# Get each year duration
-year_durations = tstates.group_by("Year").agg(
-    pl.col("Timestamp").max().alias("year_end"),
-    pl.col("Timestamp").min().alias("year_start")
-).with_columns(
-    (pl.col("year_end") - pl.col("year_start")).dt.total_seconds().alias("duration_sec")
-).sort("Year")
+tstates_dur =  tstates_dur.drop_nulls()
 
-year_durations = year_durations.with_columns(
-    (pl.col("duration_sec")/3_600).round(2).alias("duration_hours")
-).drop("duration_sec")
+# # Get each year duration
+# year_durations = tstates_dur.group_by("Year").agg(
+#     pl.col("Timestamp").max().alias("year_end"),
+#     pl.col("Timestamp").min().alias("year_start")
+# ).with_columns(
+#     (pl.col("year_end") - pl.col("year_start")).dt.total_seconds().alias("duration_sec")
+# ).sort("Year")
+
+# year_durations = year_durations.with_columns(
+#     (pl.col("duration_sec")/3_600).round(2).alias("duration_hours")
+# ).drop("duration_sec")
 
 tstates_dur = tstates_dur.rename({"wt": "Turbine"}).drop_nulls()
-
 tstates_dur = tstates_dur.sort(["Turbine", "Timestamp"])
-
-# TODO: write "none" to "last seen" with state = 1 Durations. To avoid inserting unrealistic short TTFs
-
 ```
 
 
 ```{python}
-#label: calc-ttf-ttr
+#| label: calc-ttf-ttr
 
 ttf = tstates_dur.filter(pl.col("State") == 1).rename({"Duration": "TTF"})
 ttf_agg_year = (    
@@ -530,7 +562,7 @@ rel_param.write_parquet(f"{fpath_processed}{filename}")
 #| eval: true
 
 # import polars.selectors as cs
-from great_tables import GT, md, style, loc
+
 
 gt_reliability = (
     GT(rel_param,
@@ -603,7 +635,7 @@ gt_reliability = (
 ## Reliability Parameters
 
 ```{python}
-|# label: print-great-table
+#| label: print-great-table
 
 gt_reliability
 ```

@@ -260,7 +260,7 @@ find_best_fit <- function(turbine, duration) {
                   args = list(rate = fit_exp$estimate[1]),
                   color = "orange", linetype = "dashed") +
 
-    labs(title = paste("Duration Distribution (TTR or TTF) with Fitted Curves", df$turbine[1]),
+    labs(title = paste("Distribution of Duration Samples with Fitted Curves", df$turbine[1]),
          x = "Duration (hours)",
          y = "Density") +
     theme_minimal()  
