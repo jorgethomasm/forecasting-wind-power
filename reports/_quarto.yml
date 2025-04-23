@@ -2,5 +2,7 @@ project:
   type: website
   output-dir: docs
 
-editor: source
+files:
+  - reports/Kelmarsh_reliability_eval.qmd
 
+editor: source
