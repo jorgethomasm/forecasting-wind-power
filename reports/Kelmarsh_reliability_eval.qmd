@@ -2,7 +2,7 @@
 title: "SCADA-Based Reliability Evaluation"
 subtitle: "Kelmarsh Wind Farm - 12.3 MW"
 author: "Jorge A. Thomas"
-date: 8.April.2025
+date: 23.April.2025
 format:    
     html:
       theme: default
@@ -65,7 +65,7 @@ fpath_online = "./online_assets/"
 #| label: Read-Data
 #| eval: true
 
-tstatus = pl.read_parquet(f"{fpath_interim}Kelmarsh_Turbines_Status_20160114_20230109_n385133_cols12.parquet")
+tstatus = pl.read_parquet(f"{fpath_online}Kelmarsh_Turbines_Status_20160114_20230109_n385133_cols12.parquet")
 ```
 
 ## Events Catalogue and Status
@@ -187,7 +187,6 @@ tstates= tstates.with_columns(
 last_year = tstates["Year"].unique().max()
 
 tstates= tstates.sort(["Year", "wt", "Timestamp"]).drop_nulls()
-tstates.head()
 ```
 
 ```{python}
@@ -422,20 +421,22 @@ tstates_dur = tstates_dur.sort(["Turbine", "Timestamp"])
 
 
 ```{python}
-#| label: calc-ttf-ttr
+#| label: calc-mttf-mttr
 
 ttf = tstates_dur.filter(pl.col("State") == 1).rename({"Duration": "TTF"})
+
 ttf_agg_year = (    
     ttf.group_by(["Year",  "Turbine"])
     .agg(
         pl.len().alias("State delete"),                
         pl.sum("TTF").alias("Time to Failure"),
-        pl.mean("TTF").alias("MTTF")    # Check "last seen"                  
+        pl.mean("TTF").alias("MTTF")               
         )         
     .sort(["Year",  "Turbine"])     
     )
 
 ttr = tstates_dur.filter(pl.col("State") == 0).rename({"Duration": "TTR"})
+
 ttr_agg_year = (    
     ttr.group_by(["Year",  "Turbine"])
     .agg(
@@ -473,17 +474,7 @@ ttr.write_parquet(f"{fpath_processed}{filename_ttr}")
 
 ```{python}
 #| label: calc-outages-month
-
-# monthly_outages = pl.sql("""
-#     SELECT 
-#         Year,
-#         Turbine,
-#         strftime('%m', Timestamp) AS "Month",
-#         COUNT(*) AS "Outages"
-#     FROM ttr
-#     GROUP BY Year, Turbine, Month
-#     ORDER BY Year, Turbine, Month
-# """).collect()
+#| eval: true
 
 monthly_outages = ttr.with_columns(
     pl.col("Timestamp").dt.month().alias("Month")
@@ -506,34 +497,32 @@ monthly_outages_piv = monthly_outages_piv.select(
     ["Year", "Turbine", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"]).sort("Year", "Turbine")
 
 monthly_outages_ = monthly_outages_piv.with_columns(
-    pl.concat_list(pl.all().exclude("Year", "Turbine")).alias("Monthly_Outages")
-    ).select(["Year", "Turbine", "Monthly_Outages"])
+    pl.concat_list(pl.all().exclude("Year", "Turbine")).alias("Monthly")
+    ).select(["Year", "Turbine", "Monthly"])
 ```
 
 
 ```{python}
-#| label: Reliablity-parameters
+#| label: calc-reliablity-params
 #| eval: true
 
 rel_param = ttf_agg_year.join(ttr_agg_year, on=["Year", "Turbine"], how="left")
-rel_param = rel_param.join(year_durations, on="Year")
 rel_param = rel_param.join(monthly_outages_, on=["Year", "Turbine"])
+rel_param = rel_param.drop("State delete")
+rel_param = rel_param.rename({"TTR":"Downtime", "Time to Failure": "Uptime"})
 
 rel_param = rel_param.with_columns(
-    (pl.col("Forced Outages")/pl.col("duration_hours")).alias("Failure Rate"),
+    (pl.col("Uptime") + pl.col("Downtime")).alias("EvalTime")
+)
+
+rel_param = rel_param.with_columns(
+    (pl.col("Forced Outages")/pl.col("EvalTime")).alias("Failure Rate"),
     (pl.col("MTTR")/(pl.col("MTTF") + pl.col("MTTR"))).alias("FOR"),    
 )
 
 rel_param = rel_param.with_columns(    
-    (1-pl.col("FOR")).alias("Availability")
-)
-
-# rel_param = rel_param.drop(["State delete", "year_end" , "year_start" , "duration_hours"])
-
-
-rel_param = rel_param.with_columns(
+    (1-pl.col("FOR")).alias("Availability"),
     pl.lit("wind-turbine-icon-10.jpg").alias("icon")
-
 )
 
 ```
@@ -561,9 +550,6 @@ rel_param.write_parquet(f"{fpath_processed}{filename}")
 #| label: generate-table
 #| eval: true
 
-# import polars.selectors as cs
-
-
 gt_reliability = (
     GT(rel_param,
     rowname_col = "Turbine",
@@ -580,9 +566,9 @@ gt_reliability = (
         title=md("Six Wind Turbines - Model Senvion MM92"),
         subtitle=md("Reliability Evaluation (2016 - 2022)")
     )
-    .tab_source_note(source_note="* Forced Outages (IEC) only, scheduled stops not included.")    
+    .tab_source_note(source_note="* Forced Outages (IEC) only. Yearly evaluation period -> Censored uptime (TTF) data around year change.")    
     .fmt_number(
-        columns=["MTTF", "MTTR", "TTR", "Time to Failure"],
+        columns=["MTTF", "MTTR", "Downtime", "Uptime", "EvalTime"],
         decimals=2
     )
     .fmt_image(
@@ -594,7 +580,7 @@ gt_reliability = (
         decimals=5
     )
     .fmt_nanoplot(
-        columns="Monthly_Outages",
+        columns="Monthly",
         plot_type="bar"
     )
     .tab_spanner(
@@ -602,32 +588,28 @@ gt_reliability = (
         columns=["FOR", "Availability"]
     )
     .tab_spanner(
-        label="Out-of-Service",
-        columns=["MTTR", "TTR"]
+        label="Out-of-Service [h]",
+        columns=["Downtime", "MTTR"]
     )
     .tab_spanner(
-        label="Ready *",
-        columns=["MTTF", "Time to Failure"]
+        label="*Ready [h]",
+        columns=["Uptime", "MTTF"]
     )
     .tab_spanner(
         label="Forced Outages",
-        columns=["Forced Outages", "Monthly_Outages"]
+        columns=["Forced Outages", "Monthly", "Failure Rate"]
     )
     .cols_move_to_start(
-        columns=["Year", "icon", "Turbine", "Forced Outages", "Monthly_Outages", "Failure Rate", "MTTF",  "Time to Failure"]
+        columns=["Year", "icon", "Turbine", "Forced Outages", "Monthly", "Failure Rate", "Uptime",  "MTTF"]
     )
     .cols_label(        
-        {"Forced Outages": "Total",
-        "Monthly_Outages": "Monthly",
-        "Failure Rate": "Failure Rate [{{h^-1}}]",
-        "Time to Failure": "TTF [h]",        
+        {"Forced Outages": "Total",         
+        "Failure Rate": "λ [h⁻¹]",               
         "icon": "Turbine",
-        "MTTF": "MTTF [h]",
-        "MTTR": "MTTR [h]",
-        "TTR": "Duration [h]",
         "FOR": "FOR ({{P_0}})",
-        "Availability": "Availability ({{P_1}})"}
-    ).cols_hide(columns="Time to Failure")
+        "Availability": "A ({{P_1}})"
+        }
+    ).cols_hide(columns="EvalTime")
 )
 
 ```

@@ -137,7 +137,7 @@ relia_2017_2021 <- relia |> filter(Year != 2016 & Year != 2022)
 ```{r}
 #| label: plot-lambda-per-wt
 
-img <- cowplot::ggdraw() + cowplot::draw_image("./reports/online_assets/turbine-senvion_mm92.jpg")
+img <- cowplot::ggdraw() + cowplot::draw_image("./online_assets/turbine-senvion_mm92.jpg")
 
 plt_boxplt_wt <- ggplot(relia_2017_2021,  aes(x = Turbine, y = `Failure Rate`, colour=Turbine)) + 
   geom_violin(alpha = 0.5, fill="grey", adjust=0.75, show.legend=FALSE) +
