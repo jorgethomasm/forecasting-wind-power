@@ -245,6 +245,11 @@ montecarlo_sim <- function(sim_parameters, n_events, dt_start) {
     total_time = cumsum(ttf_sim + ttr_sim)
   )
 
+  # TODO: Add df with indices calculated from the simulation
+  # A = sum(sim_df$ttf)/last(sim_df$total_time)
+
+  # U = sum(sim_df$ttr)/last(sim_df$total_time)
+
   # Intercalate ttf and ttr into a single vector
   ttf_ttr_intercalated <- as.vector(rbind(sim_df$ttf, sim_df$ttr))
 

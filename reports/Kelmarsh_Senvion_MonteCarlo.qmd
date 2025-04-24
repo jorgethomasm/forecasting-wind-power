@@ -314,12 +314,63 @@ montecarlo_events <- bind_rows(sim_res_list, .id = "Turbine")
 montecarlo_events$Turbine <- as.factor(montecarlo_events$Turbine)
 ```
 
+```{r}
+#| label: sys-algo
+
+# 1) generate hourly time vector-> dt_start - max(datetime) per turbine (select min)
+
+max_min_ts <- montecarlo_events |>
+  group_by(Turbine) |>
+  summarise(max_ts = max(timestamp))
+
+# time_grid_max <- seq(min(montecarlo_events$timestamp), max(montecarlo_events$timestamp), by = "hour")
+time_grid_min <- seq(min(montecarlo_events$timestamp), min(max_min_ts$max_ts), by = "hour")
+total_sim_t <-  last(time_grid_min) - first(time_grid_min)
+total_sim_t_hours <- lubridate::time_length(total_sim_t, unit = "hours")
+total_sim_t_year <- lubridate::time_length(total_sim_t, unit = "years")
+
+# 2 For each turbine, interpolate the state at each hour
+# turbine_states <- montecarlo_events |>
+#   dplyr::select(Turbine, timestamp, state) |>
+#   group_by(Turbine) |>
+#   arrange(timestamp) |>
+#   tidyr::complete(timestamp = time_grid_max) |>
+#   tidyr::fill(state, .direction = "down") |>
+#   filter(timestamp %in% time_grid_min) |>
+#   ungroup()
+
+
+turbine_states <- montecarlo_events |>
+  dplyr::select(Turbine, timestamp, state) |>
+  group_by(Turbine) |>
+  arrange(timestamp) |>
+  tidyr::complete(timestamp = time_grid_min) |>
+  tidyr::fill(state, .direction = "down") |>
+  filter(timestamp %in% time_grid_min) |>
+  ungroup()
+
+```
+
 
 ```{r}
+#| label: probs_indices
 
-A = sum(sim_df$ttf)/last(sim_df$total_time)
+tt <- montecarlo_events |>
+  group_by(Turbine) |>  
+  summarise(tt = sum(duration))
 
-U = sum(sim_df$ttr)/last(sim_df$total_time)
+probs <- montecarlo_events |>
+  group_by(Turbine) |>  
+  filter(state == 1) |>
+  summarise( A = sum(duration)/tt$tt[3]) # check corresponding duration per turbine
+
+
+
+
+# A = sum(sim_df$ttf)/last(sim_df$total_time)
+
+# U = sum(sim_df$ttr)/last(sim_df$total_time)
+
 ```
 
 ```{r}
