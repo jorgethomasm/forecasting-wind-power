@@ -35,7 +35,7 @@ library(arrow)
 library(here)
 library(dunn.test)
 library(fitdistrplus)
-# library(gt)
+library(gt)
 library(patchwork)
 # library(paletteer)
 
@@ -46,9 +46,9 @@ fpath_online <- "./online_assets/"
 source(here("src", "R", "utils", "jthomfuncs.r"))
 # theme_set(jthomggtheme)
 
-relia <- read_parquet(here("data", "processed", "Kelmarsh_reliability_paramaters_2016_2022_n42_cols12.parquet"))
-ttf <- read_parquet(here("data", "processed", "Kelmarsh_time-to-failure_2016_2022_n929_cols8.parquet"))
-ttr <- read_parquet(here("data", "processed", "Kelmarsh_time-to-repair_2016_2022_n889_cols8.parquet"))
+relia <- read_parquet(here("data", "processed", "Kelmarsh_reliability_paramaters_2016_2022_n42_cols13.parquet"))
+ttf <- read_parquet(here("data", "processed", "Kelmarsh_time-to-failure_2016_2022_n887_cols7.parquet"))
+ttr <- read_parquet(here("data", "processed", "Kelmarsh_time-to-repair_2016_2022_n889_cols7.parquet"))
 
 relia <- relia |> mutate(Turbine = as.factor(Turbine))
 relia$icon <- NULL
@@ -139,14 +139,15 @@ relia_2017_2021 <- relia |> filter(Year != 2016 & Year != 2022)
 
 img <- cowplot::ggdraw() + cowplot::draw_image("./reports/online_assets/turbine-senvion_mm92.jpg")
 
-plt_boxplt_wt <- ggplot(relia_2017_2021,  aes(x = Turbine, y = `Failure Rate`, colour=Turbine)) + 
+plt_boxplt_wt <- ggplot(relia_2017_2021,  aes(x = Turbine, y = `Failure Rate`)) + 
   geom_violin(alpha = 0.5, fill="grey", adjust=0.75, show.legend=FALSE) +
-  geom_dotplot(aes(color=Turbine, fill=Turbine), dotsize = 0.3, binaxis="y", show.legend=FALSE, stackdir= "center", alpha = 0.8) +
+  geom_jitter(aes(color=Year)) +
+  # geom_dotplot(aes(color=Year, fill=Year), dotsize = 0.3, binaxis="y", show.legend=FALSE, stackdir= "center", alpha = 0.8) +
   stat_summary(fun=mean, show.legend=FALSE, geom="crossbar", alpha=0.5, width=0.7) +
   stat_summary(fun = mean, geom = "text", aes(label = round(after_stat(y), 5)), vjust = -1.2, color = "black",fontface = "bold") +  
   labs(y=expression(lambda ~ "[h"^{-1}*"]"), x="") +  
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
-  ggtitle("Mean Failure Rate per Turbine at Kelmarsh (2017-2021)")
+  ggtitle("Avg. Failure Rate (2017-2021) per Turbine at Kelmarsh")
 
 plt_frate <- plt_boxplt_years / (plt_boxplt_wt + img)
 
@@ -159,7 +160,7 @@ plot(plt_frate)
 
 ```{r}
 #| label: constant-frates-per-turbine
-#| eval: false
+#| eval: true
 
 frates_cte <- relia_2017_2021 |>
   group_by(Turbine) |>
@@ -173,12 +174,8 @@ frates_cte
 ```{r}
 # Distribution analysis
 
-ttr_2017_2021 <- ttr |> 
- filter(Year != 2016 & Year != 2022)
-
-
-ttf_2017_2021 <- ttf |> 
- filter(Year != 2016 & Year != 2022)
+ttr_2017_2021 <- ttr |> filter(Year != 2016 & Year != 2022)
+ttf_2017_2021 <- ttf |> filter(Year != 2016 & Year != 2022)
 
 ```
 
@@ -203,12 +200,11 @@ plt_boxplt_years_r <- ggplot(relia, aes(x = Year, y = MTTR)) +
   #geom_boxplot(fill = "grey", color = "black", alpha = 0.3) +  
   geom_violin(alpha = 0.5) +
   geom_jitter(aes(color=Turbine)) +  
+   annotate("rect", xmin = 1.5, xmax = 6.5, ymin = -Inf, ymax = Inf, fill = "darkgreen", alpha = 0.1) +
   #labs(y = "Repair Rate [1/h]") +  # Changed to plain text
   labs(y=expression(mu ~ "[h"^{-1}*"]"), x="") +  
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
   ggtitle("Yearly Repair Rates of Kelmarsh Wind Turbines")
-
-plot(plt_boxplt_years_r)
 
 ```
 
@@ -218,37 +214,33 @@ plot(plt_boxplt_years_r)
 #| eval: true
 
 plt_boxplt_turbines_r <- ggplot(relia_2017_2021, aes(x = Turbine, y = 1/MTTR)) +
-  geom_boxplot(fill = "grey", color = "black", alpha = 0.3) +  
-  # geom_violin(alpha = 0.5) +
-  geom_jitter(aes(color=Turbine)) +  
+  #geom_boxplot(fill = "grey", color = "black", alpha = 0.3) +  
+  geom_violin(alpha = 0.5) +
+  geom_jitter(aes(color=Year)) +  
   #labs(y = "Repair Rate [1/h]") +  # Changed to plain text
   labs(y=expression(mu ~ "[h"^{-1}*"]"), x="") +  
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
-  ggtitle("Yearly Repair Rates of Kelmarsh Wind Turbines")
+  ggtitle("Repair Rates (2017-2021) for each Kelmarsh Wind Turbines")
 
-plot(plt_boxplt_turbines_r)
-```
+plt_rrate <- plot(plt_boxplt_years_r / (plt_boxplt_turbines_r + img)) 
+plt_rrate
+ ```
 
 ## Fit pdf to Repair times
 
 ```{r}
+#| label: fit-ttr-pdfs
+#| eval: false
 
-# Loop over each Turbine and apply find_best_fit to TTR
+gof_list <- lapply(split(ttr_2017_2021, ttr_2017_2021$Turbine), function(df) {find_best_fit(df$Turbine, df$TTR)})
 
-for (turb in unique(ttr_2017_2021$Turbine)) {
-  print("\nTurbine:", str(turb))
-  df_sub <- ttr_2017_2021 |> filter(Turbine == turb)
-  find_best_fit(turbine = df_sub$Turbine, duration = df_sub$TTR) 
-  }
-
-# find_best_fit(turbine=ttr_2017_2021$Turbine, duration=ttr_2017_2021$TTR)
-
+print(gof_list)
 ```
 
 ## Parameters per Wind Turbine
 
 ```{r}
-#| label: ttr-lognormal-fit-list
+#| label: fit-found-best-dist
 
 # Fit a lognormal distribution to TTR for each Turbine using lapply
 ttr_lnorm_fits <- lapply(split(ttr_2017_2021, ttr_2017_2021$Turbine), function(df) {fitdist(df$TTR, "lnorm")})
@@ -259,40 +251,96 @@ ttr_lnorm_fits
 ```
 
 
-### Fits Plots
 ```{r}
-#| label: ttr-lognormal-fit-plot
+# Extract lognormal parameters from ttr_lnorm_fits
+ttr_params <- lapply(names(ttr_lnorm_fits), function(turb) {
+  fit <- ttr_lnorm_fits[[turb]]
+  tibble(
+    Turbine = turb,
+    meanlog = fit$estimate["meanlog"],
+    sdlog = fit$estimate["sdlog"]
+  )
+}) |> bind_rows()
 
-# Plot histogram with fitted lognormal curve
-ggplot(ttr_2017_2021, aes(x = TTR)) +
-  geom_histogram(aes(y = ..density..), bins = 160, fill = "#90caf9", color = "black", alpha = 0.7) +
-  stat_function(fun = dlnorm, args = list(meanlog = fit_lnorm$estimate[1], sdlog = fit_lnorm$estimate[2]), color = "#1565c0", size = 1.2) +
-  facet_grid(rows=vars(Turbine))
+# Combine with frates_cte
+wt_sim_param <- frates_cte |>
+  rename(frate =  `mean(\`Failure Rate\`)`) |>
+  left_join(ttr_params, by = "Turbine")
+
+
+```
+
+## Simulation Parameters
+
+```{r}
+#| label: sim-parameters
+#| eval: true
+
+gt(wt_sim_param) |>
+  tab_header(
+    title = md("**Simulation Parameters per Wind Turbine**"),
+    subtitle = "Estimated Parameters (2017:2021)"
+  ) |>
+  fmt_number(
+    columns = c(frate, meanlog, sdlog),
+    decimals = 5
+  ) |>
+  cols_label(
+    Turbine = md("**Turbine**"),
+    frate = md("**λ [h⁻¹]**"),
+    meanlog = md("**log(μ) [h]**"),
+    sdlog = md("**log(σ) [h]**")
+  ) |>
+  tab_options(
+    table.font.size = 16,
+    heading.title.font.size = 20,
+    heading.subtitle.font.size = 16,
+    row.striping.background_color = "#f0f8ff"
+  ) |> opt_row_striping()
+
+```
+
+
+
+```{r}
+# Extract parameters for T01
+params_T01 <- wt_sim_param |> filter(Turbine == "T01")
+
+lambda <- params_T01$frate      # Failure rate [h^-1]
+meanlog <- params_T01$meanlog   # Lognormal meanlog for TTR
+sdlog <- params_T01$sdlog       # Lognormal sdlog for TTR
+
+set.seed(123)  # For reproducibility
+
+n_events <- 20000  # Number of simulated failures
+
+# Simulate time to failure (exponential distribution)
+ttf_sim <- rexp(n_events, rate = lambda)
+
+# Simulate time to repair (lognormal distribution)
+ttr_sim <- rlnorm(n_events, meanlog = meanlog, sdlog = sdlog)
+
+# Chronological simulation: build event timeline
+event_times <- cumsum(ttf_sim + ttr_sim)
+
+sim_df <- tibble(
+  event = seq(1:n_events),
+  ttf = ttf_sim,
+  ttr = ttr_sim,
+  failure_time = cumsum(ttf_sim),
+  total_time = cumsum(ttf_sim + ttr_sim)
+)
+
+paste("Simulation Time:", last(sim_df$total_time/8760), "years.")
+
+head(sim_df)
+
 ```
 
 
 ```{r}
-#| label: box-cox
-#| eval: false
-boxcox_trans <- MASS::boxcox(lm(TTR ~ 1, data = ttr_2017_2021), lambda = seq(-1, 1), plotit = TRUE)
 
-boxcox_lambda <- as.numeric(boxcox_trans$x[which.max(boxcox_trans$y)])
+A = sum(sim_df$ttf)/last(sim_df$total_time)
 
-# New transformed response variable
-ttr_2017_2021 <- ttr_2017_2021 |>
-  mutate(TTR_bc = (TTR^boxcox_lambda - 1) / boxcox_lambda)
-
-
-ttr_2017_2021 |>  
-  ggplot(aes(x = TTR_bc)) +  
-  geom_histogram(bins = 50, color = "seagreen", fill = "seagreen", alpha = 0.5) +  
-  labs(x = "TTR [Box-Cox]")
-
-ttr_2017_2021 |> 
-  ggplot(aes(sample = TTR_bc)) + 
-  stat_qq(color = "seagreen", alpha = 0.5) + 
-  stat_qq_line(color = "seagreen") +   
-  labs(y = "TTR\n[Box-Cox]", x = "Theoretical Quantiles (Norm. Dist.)")
-
+U = sum(sim_df$ttr)/last(sim_df$total_time)
 ```
-

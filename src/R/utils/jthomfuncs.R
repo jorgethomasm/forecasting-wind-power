@@ -145,36 +145,38 @@ calc_yeo_johnson <- function(y, data)  {
 #' @export
 find_best_fit <- function(turbine, duration) {
 
-  df <- data.frame(turbine, duration)  
+  # paste("Fit for", turbine, "with", length(duration), "samples.")
+
+  df <- data.frame(turbine, duration)
   # Fit distributions
   fit_weibull <- fitdistrplus::fitdist(df$duration, "weibull")
   fit_lnorm <- fitdistrplus::fitdist(df$duration, "lnorm")
   fit_exp <- fitdistrplus::fitdist(df$duration, "exp")
-  # Plot empirical vs theoretical distributions
-  plt <- ggplot(df, aes(x = duration)) +
-    geom_histogram(aes(y = after_stat(density)), bins = 80, fill = "#1E88E5", alpha = 0.7) +
-    geom_density(color = "#FF5252", linewidth = 1) +
-    stat_function(fun = dweibull, 
-                  args = list(shape = fit_weibull$estimate[1], 
-                              scale = fit_weibull$estimate[2]),
-                  color = "darkgreen", linetype = "dashed") +
-    stat_function(fun = dlnorm,
-                  args = list(meanlog = fit_lnorm$estimate[1],
-                              sdlog = fit_lnorm$estimate[2]),
-                  color = "blue", linetype = "dashed") +
-    stat_function(fun = dexp,
-                  args = list(rate = fit_exp$estimate[1]),
-                  color = "orange", linetype = "dashed") +
 
-    labs(title = paste("Distribution of Duration Samples with Fitted Curves", df$turbine[1]),
-         x = "Duration (hours)",
-         y = "Density") +
-    theme_minimal()
+  # Plot empirical vs theoretical distributions
+  # plt <- ggplot(df, aes(x = duration)) +
+  #   geom_histogram(aes(y = after_stat(density)), bins = 80, fill = "#1E88E5", alpha = 0.7) +
+  #   geom_density(color = "#FF5252", linewidth = 1) +
+  #   stat_function(fun = dweibull, 
+  #                 args = list(shape = fit_weibull$estimate[1], 
+  #                             scale = fit_weibull$estimate[2]),
+  #                 color = "darkgreen", linetype = "dashed") +
+  #   stat_function(fun = dlnorm,
+  #                 args = list(meanlog = fit_lnorm$estimate[1],
+  #                             sdlog = fit_lnorm$estimate[2]),
+  #                 color = "blue", linetype = "dashed") +
+  #   stat_function(fun = dexp,
+  #                 args = list(rate = fit_exp$estimate[1]),
+  #                 color = "orange", linetype = "dashed") +
+
+  #   labs(title = paste("Distribution of Duration Samples with Fitted Curves", df$turbine[1]),
+  #        x = "Duration (hours)",
+  #        y = "Density") +
+  #   theme_minimal() 
   
-  summary(df$duration)
   gof_stats <- fitdistrplus::gofstat(list(fit_weibull, fit_lnorm, fit_exp))
-  print(gof_stats)
-  plot(plt)
+
+  return(gof_stats)
 }
 
 
