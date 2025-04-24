@@ -304,43 +304,14 @@ gt(wt_sim_param) |>
 
 ```
 
-
-
 ```{r}
-#| label: monte-carlo
+#| label: run-montecarlo
 
-# Extract parameters for T01
-params_T01 <- wt_sim_param |> filter(Turbine == "T01")
+sim_start_datetime <- "2023-01-01 00"
+sim_res_list <- lapply(split(wt_sim_param, wt_sim_param$Turbine), function(params) {montecarlo_sim(params, n_events=20000, dt_start=sim_start_datetime)})
 
-lambda <- params_T01$frate      # Failure rate [h^-1]
-meanlog <- params_T01$meanlog   # Lognormal meanlog for TTR
-sdlog <- params_T01$sdlog       # Lognormal sdlog for TTR
-
-set.seed(123)  # For reproducibility
-
-n_events <- 20000  # Number of simulated failures
-
-# Simulate time to failure (exponential distribution)
-ttf_sim <- rexp(n_events, rate = lambda)
-
-# Simulate time to repair (lognormal distribution)
-ttr_sim <- rlnorm(n_events, meanlog = meanlog, sdlog = sdlog)
-
-# Chronological simulation: build event timeline
-event_times <- cumsum(ttf_sim + ttr_sim)
-
-sim_df <- tibble(
-  event = seq(1:n_events),
-  ttf = ttf_sim,
-  ttr = ttr_sim,
-  failure_time = cumsum(ttf_sim),
-  total_time = cumsum(ttf_sim + ttr_sim)
-)
-
-paste("Simulation Time:", last(sim_df$total_time/8760), "years.")
-
-head(sim_df)
-
+montecarlo_events <- bind_rows(sim_res_list, .id = "Turbine")
+montecarlo_events$Turbine <- as.factor(montecarlo_events$Turbine)
 ```
 
 
@@ -351,71 +322,14 @@ A = sum(sim_df$ttf)/last(sim_df$total_time)
 U = sum(sim_df$ttr)/last(sim_df$total_time)
 ```
 
-
-
 ```{r}
+#| label: time-state-diagram
 
-
-
-# Build a data frame with start and end times for each event
-sim_events <- sim_df |>
-  mutate(
-    start_time = lag(total_time, default = 0),
-    end_time = total_time
-  ) |>
-  select(event, ttf, ttr, start_time, end_time)
-
-# Create a long format: alternate between state=1 (operating) and state=0 (repair)
-state_df <- tibble(
-  start = c(0, as.vector(rbind(cumsum(sim_df$ttf)[-n_events], cumsum(sim_df$ttf + sim_df$ttr)[-n_events]))),
-  end = c(cumsum(sim_df$ttf)[-n_events], cumsum(sim_df$ttf + sim_df$ttr)[-n_events]),
-  state = rep(c(1, 0), length.out = 2 * (n_events - 1))
-)
-
-# Expand to hourly time series
-hourly_times <- tibble(
-  hour = seq(0, floor(max(sim_df$total_time))),
-)
-
-# Assign state to each hour
-hourly_times <- hourly_times |>
-  mutate(
-    state = sapply(hour, function(h) {
-      idx <- which((h >= state_df$start) & (h < state_df$end))
-      if (length(idx) > 0) state_df$state[max(idx)] else NA
-    })
-  )
-
-head(hourly_times)
-
-```
-
-
-```{r}
-
-
-# Intercalate ttf and ttr into a single vector
-ttf_ttr_intercalated <- as.vector(rbind(sim_df$ttf, sim_df$ttr))
-
-# Build a data frame
-sim_intercalated <- tibble(
-  duration = ttf_ttr_intercalated,
-  state = rep(c(1, 0), length.out = length(ttf_ttr_intercalated)) 
-)
-
-sim_intercalated <- sim_intercalated |> mutate( timestamp = ymd_h("2023-01-01 00") + seconds(c(0, cumsum(duration[-length(duration)]) * 3600)))
-
-
-```
-
-
-```{r}
-
-
-ggplot(sim_intercalated[1:500, ], aes(x = timestamp, y = state)) +
+ggplot(montecarlo_events[1:500, ], aes(x = timestamp, y = state, color=Turbine)) +
   geom_step() +
-  scale_y_continuous(limits = c(0, 1), breaks = c(0, 1))
+  scale_y_continuous(limits = c(-0.01, 1.01), breaks = c(0, 1))
   labs(title = "Time / State Diagram for T01", x = "datetime", y = "State (1=Up, 0=Down)") +
+  # facet_grid(rows=Turbine) + 
   theme_minimal()
 
 ```

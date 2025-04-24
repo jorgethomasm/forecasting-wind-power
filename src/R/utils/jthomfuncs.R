@@ -180,6 +180,87 @@ find_best_fit <- function(turbine, duration) {
 }
 
 
+#' Monte Carlo Chronological Simulation of Failure and Repair Times
+#'
+#' Simulates a chronological sequence of alternating failure (up) and repair (down) events for a wind turbine,
+#' using exponential and lognormal distributions for time-to-failure (TTF) and time-to-repair (TTR), respectively.
+#'
+#' @param sim_parameters A list containing the simulation parameters: \code{frate} (failure rate, numeric, [h^-1]),
+#'   \code{meanlog} (meanlog parameter for lognormal repair time), and \code{sdlog} (sdlog parameter for lognormal repair time).
+#' @param n_events Integer. Number of failure-repair cycles to simulate.
+#' @param dt_start character. Start date and time for the simulation in "YYYY-MM-DD HH" format.
+#' 
+#' @details
+#' The function generates \code{n_events} time-to-failure values from an exponential distribution with rate \code{frate},
+#' and \code{n_events} time-to-repair values from a lognormal distribution with parameters \code{meanlog} and \code{sdlog}.
+#' It then intercalates these into a chronological sequence, builds a timestamped data frame starting from "2023-01-01 00",
+#' and assigns a state column (1 = up, 0 = down) for each interval.
+#'
+#' @return A tibble with columns:
+#'   \itemize{
+#'     \item \code{timestamp}: POSIXct, start time of each interval
+#'     \item \code{state}: integer, 1 (operating) or 0 (repair)
+#'     \item \code{duration}: numeric, duration of the interval in hours
+#'   }
+#'
+#' @examples
+#' \dontrun{
+#' sim_parameters <- list(frate = 0.01, meanlog = 1, sdlog = 0.5)
+#' sim_df <- montecarlo_sim(sim_parameters, n_events = 100)
+#' head(sim_df)
+#' }
+#' @importFrom dplyr tibble select
+#' @importFrom lubridate ymd_h
+#' @export
+montecarlo_sim <- function(sim_parameters, n_events, dt_start) {
+  # Check if the required parameters are provided
+  if (missing(sim_parameters) || missing(n_events)) {
+    stop("Please provide both sim_parameters and n_events.")
+  }
+
+  # Check if sim_parameters is a list and contains the required elements
+  if (!is.list(sim_parameters) || !all(c("frate", "meanlog", "sdlog") %in% names(sim_parameters))) {
+    stop("sim_parameters must be a list containing frate, meanlog, and sdlog.")
+  }
+
+  # Extract parameters from the list
+
+  lambda <- sim_parameters$frate      # Failure rate [h^-1]
+  meanlog <- sim_parameters$meanlog   # Lognormal meanlog for TTR
+  sdlog <- sim_parameters$sdlog       # Lognormal sdlog for TTR
+
+  set.seed(1982)  # For reproducibility
+
+  # Simulate tim-to-failure (exponential distribution)
+  ttf_sim <- rexp(n_events, rate = lambda)
+
+  # Simulate time-to-repair (lognormal distribution)
+  ttr_sim <- rlnorm(n_events, meanlog = meanlog, sdlog = sdlog)
+
+  sim_df <- dplyr::tibble(
+    event = seq(1:n_events),
+    ttf = ttf_sim,
+    ttr = ttr_sim,
+    failure_time = cumsum(ttf_sim),
+    total_time = cumsum(ttf_sim + ttr_sim)
+  )
+
+  # Intercalate ttf and ttr into a single vector
+  ttf_ttr_intercalated <- as.vector(rbind(sim_df$ttf, sim_df$ttr))
+
+  # Build a data frame
+  results <- dplyr::tibble(
+    duration = ttf_ttr_intercalated,
+    state = rep(c(1, 0), length.out = length(ttf_ttr_intercalated)),
+    timestamp = lubridate::ymd_h(dt_start) + seconds(c(0, cumsum(duration[-length(duration)]) * 3600))
+  )
+
+  results <- results |> dplyr::select(timestamp, state, duration)
+
+  results
+}
+
+
 # get mode function
 # df_all |>
 #   count(MasVnrType, name = "Count", sort = TRUE) |>
