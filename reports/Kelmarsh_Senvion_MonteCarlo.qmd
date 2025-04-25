@@ -67,8 +67,7 @@ ttr <- ttr |> mutate(across(all_of( c("Year", "Turbine")), ~ factor(.x, ordered 
 
 plt_bathtub <- ggplot(relia, aes(x=Year, y=`Failure Rate`, colour = Turbine)) +
   ggtitle("Bathtub Curve?") +
-  geom_line() + geom_point() +
-  #facet_grid(~Turbine) + 
+  geom_line() + geom_point() +  
   labs(y=expression(lambda ~ "[h"^{-1}*"]")) +
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5))
 ```
@@ -76,13 +75,31 @@ plt_bathtub <- ggplot(relia, aes(x=Year, y=`Failure Rate`, colour = Turbine)) +
 ### Between Turbines
 
 ```{r}
-#| label: stat-test-frate-turbines
+#| label: stat-test-frate
+#| eval: true
 #| warning: true
 
 # Summary statistics by turbine
-relia |> group_by(Turbine) |> summarise(mean = mean(`Failure Rate`), median = median(`Failure Rate`), sd = sd(`Failure Rate`), n = n())
+relia |> 
+  group_by(Turbine) |> 
+  summarise(mean = mean(`Failure Rate`), 
+            median = median(`Failure Rate`), 
+            sd = sd(`Failure Rate`), 
+            n = n()
+            )
 
 dunn_result_wt <- dunn.test(relia$`Failure Rate`, relia$Turbine, method="none", kw=TRUE, label=TRUE, wrap=TRUE)
+
+# Summary statistics by Year
+relia |>
+  group_by(Year) |>
+  summarise(mean = mean(`Failure Rate`), 
+            median = median(`Failure Rate`), 
+            sd = sd(`Failure Rate`), 
+            n = n()
+            )
+
+dunn_result_year <- dunn.test(relia$`Failure Rate`, relia$Year, method="none", kw=TRUE, label=TRUE, wrap=TRUE)
 
 ```
 
@@ -94,30 +111,15 @@ dunn_result_wt <- dunn.test(relia$`Failure Rate`, relia$Turbine, method="none", 
 
 relia <- relia |> mutate(Year = as.factor(Year))
 
-plt_boxplt_years <- ggplot(relia, aes(x = Year, y = `Failure Rate`)) +
-  # geom_boxplot(fill = "grey", color = "black", alpha = 0.3) +  
-  #see::geom_violinhalf(position = position_nudge(x = .2, y = 0), fill = "grey") +
+plt_boxplt_years <- ggplot(relia, aes(x = Year, y = `Failure Rate`)) +  
   geom_violin(alpha = 0.5, fill="grey", adjust=0.75) +
   geom_dotplot(aes(color=Turbine, fill=Turbine), dotsize = 0.4, binaxis="y", show.legend=TRUE, stackdir= "center", alpha = 0.8) +
-  stat_summary(fun=median, show.legend=FALSE, geom="crossbar", alpha=0.5, width=0.7) +
-  # geom_jitter(aes(color=Turbine)) +    
+  stat_summary(fun=median, show.legend=FALSE, geom="crossbar", alpha=0.5, width=0.7) +  
   annotate("rect", xmin = 1.5, xmax = 6.5, ymin = -Inf, ymax = Inf, fill = "darkgreen", alpha = 0.1) +
   labs(y=expression(lambda ~ "[h"^{-1}*"]"), x="") +  
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +     
   ggtitle("Yearly Failure Rates of Kelmarsh Wind Turbines - Senvion MM92")
 
-```
-
-```{r}
-#| label: stat-test-frate-years
-#| eval: true
-
-# Summary statistics by Year
-relia |>
-  group_by(Year) |>
-  summarise(mean = mean(`Failure Rate`), median = median(`Failure Rate`), sd = sd(`Failure Rate`), n = n())
-
-dunn_result_year <- dunn.test(relia$`Failure Rate`, relia$Year, method="none", kw=TRUE, label=TRUE, wrap=TRUE)
 ```
 
 Years from 2017 and 2021 represents a cluster of the Senvion M92 wind turbines.
@@ -128,14 +130,10 @@ Years from 2017 and 2021 represents a cluster of the Senvion M92 wind turbines.
 ## Homogenous Failure Rate for Kelmarsh
 
 ```{r}
-#| label: filter-2017to2021
+#| label: plot-lambda-per-wt
+#| eval: true
 
 relia_2017_2021 <- relia |> filter(Year != 2016 & Year != 2022)
-
-```
-
-```{r}
-#| label: plot-lambda-per-wt
 
 img <- cowplot::ggdraw() + cowplot::draw_image("./reports/online_assets/turbine-senvion_mm92.jpg")
 
@@ -153,7 +151,7 @@ plt_frate <- plt_boxplt_years / (plt_boxplt_wt + img)
 
 plot(plt_frate)
 
-# Save high quality PNG of plt_frate
+# Save PNG of plt_frate
 # ggsave("./reports/online_assets/plt_frate.png", plt_frate, width = 12, height = 8, dpi = 300, bg = "white")
 
 ```
@@ -166,7 +164,7 @@ frates_cte <- relia_2017_2021 |>
   group_by(Turbine) |>
   summarise(mean(`Failure Rate`))
 
-frates_cte
+frates_cte |> gt()
 ```
 
 ## Repairing Rates
@@ -175,11 +173,13 @@ frates_cte
 # Distribution analysis
 
 ttr_2017_2021 <- ttr |> filter(Year != 2016 & Year != 2022)
-ttf_2017_2021 <- ttf |> filter(Year != 2016 & Year != 2022)
+# ttf_2017_2021 <- ttf |> filter(Year != 2016 & Year != 2022)
 
 ```
 
 ```{r}
+#| labe: ttr-histogram
+#| eval: false
 
 ggplot(ttr_2017_2021, aes(x = TTR)) +
   geom_histogram(bins = 30, fill = "#1E88E5", color = "black", alpha = 0.7) +
@@ -188,42 +188,33 @@ ggplot(ttr_2017_2021, aes(x = TTR)) +
        x = "Time To Repair (hours)",
        y = "Count") +
   theme_minimal()
-
 ```
-
-
-```{r}
-#| label: best-plot-clusters-years-repair
-#| eval: true
-
-plt_boxplt_years_r <- ggplot(relia, aes(x = Year, y = MTTR)) +
-  #geom_boxplot(fill = "grey", color = "black", alpha = 0.3) +  
-  geom_violin(alpha = 0.5) +
-  geom_jitter(aes(color=Turbine)) +  
-   annotate("rect", xmin = 1.5, xmax = 6.5, ymin = -Inf, ymax = Inf, fill = "darkgreen", alpha = 0.1) +
-  #labs(y = "Repair Rate [1/h]") +  # Changed to plain text
-  labs(y=expression(mu ~ "[h"^{-1}*"]"), x="") +  
-  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
-  ggtitle("Yearly Repair Rates of Kelmarsh Wind Turbines")
-
-```
-
 
 ```{r}
 #| label: best-plot-clusters-turbines-repair
 #| eval: true
 
-plt_boxplt_turbines_r <- ggplot(relia_2017_2021, aes(x = Turbine, y = 1/MTTR)) +
-  #geom_boxplot(fill = "grey", color = "black", alpha = 0.3) +  
+plt_boxplt_years_r <- ggplot(relia, aes(x = Year, y = MTTR)) +  
   geom_violin(alpha = 0.5) +
-  geom_jitter(aes(color=Year)) +  
-  #labs(y = "Repair Rate [1/h]") +  # Changed to plain text
+  geom_jitter(aes(color=Turbine)) +  
+   annotate("rect", xmin = 1.5, xmax = 6.5, ymin = -Inf, ymax = Inf, fill = "darkgreen", alpha = 0.1) +  
+  labs(y=expression(mu ~ "[h"^{-1}*"]"), x="") +  
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
+  ggtitle("Yearly Repair Rates of Kelmarsh Wind Turbines")
+
+plt_boxplt_turbines_r <- ggplot(relia_2017_2021, aes(x = Turbine, y = 1/MTTR)) +  
+  geom_violin(alpha = 0.5) +
+  geom_jitter(aes(color=Year)) +    
   labs(y=expression(mu ~ "[h"^{-1}*"]"), x="") +  
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
   ggtitle("Repair Rates (2017-2021) for each Kelmarsh Wind Turbines")
 
 plt_rrate <- plot(plt_boxplt_years_r / (plt_boxplt_turbines_r + img)) 
 plt_rrate
+
+# Save PNG of plt_frate
+# ggsave("./reports/online_assets/plt_frate.png", plt_rrate, width = 12, height = 8, dpi = 300, bg = "white")
+
  ```
 
 ## Fit pdf to Repair times
@@ -241,17 +232,12 @@ print(gof_list)
 
 ```{r}
 #| label: fit-found-best-dist
+#| eval: true
 
 # Fit a lognormal distribution to TTR for each Turbine using lapply
+# Named list: each element is a fitdist object for a Turbine
 ttr_lnorm_fits <- lapply(split(ttr_2017_2021, ttr_2017_2021$Turbine), function(df) {fitdist(df$TTR, "lnorm")})
 
-# Named list: each element is a fitdist object for a Turbine
-ttr_lnorm_fits
-
-```
-
-
-```{r}
 # Extract lognormal parameters from ttr_lnorm_fits
 ttr_params <- lapply(names(ttr_lnorm_fits), function(turb) {
   fit <- ttr_lnorm_fits[[turb]]
@@ -268,12 +254,9 @@ wt_sim_param <- frates_cte |>
   rename(frate =  `mean(\`Failure Rate\`)`) |>
   left_join(ttr_params, by = "Turbine")
 
-
 ```
 
-
 ## Simulation Parameters
-
 
 ```{r}
 #| label: sim-parameters
@@ -331,7 +314,8 @@ montecarlo_events <- bind_rows(sim_res_list, .id = "Turbine")
 Turbines_A <- montecarlo_events |> 
   filter(state == 1) |>
   ggplot(aes(x=timestamp, y=A_U, color=Turbine)) +
-  geom_point(alpha=0.7, size=1) 
+  # geom_point(alpha=0.7, size=1) +
+  geom_line()
 
 
 # mc_A_turbines <- plot(Turbines_A / (tbl_sim_param + img)) 
