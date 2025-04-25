@@ -271,13 +271,15 @@ wt_sim_param <- frates_cte |>
 
 ```
 
+
 ## Simulation Parameters
+
 
 ```{r}
 #| label: sim-parameters
 #| eval: true
 
-gt(wt_sim_param) |>
+tbl_sim_param <- gt(wt_sim_param) |>
   tab_header(
     title = md("**Simulation Parameters per Wind Turbine**"),
     subtitle = "Estimated Distribution Parameters (2017:2021)"
@@ -304,14 +306,52 @@ gt(wt_sim_param) |>
 
 ```
 
+
+```{r}
+sim_start_dt <- "2023-01-01 00"
+
+df_sim <- montecarlo_sim(wt_sim_param[1,], n_events=15000, dt_start=sim_start_dt)
+
+```
+
 ```{r}
 #| label: run-montecarlo
 
-sim_start_datetime <- "2023-01-01 00"
-sim_res_list <- lapply(split(wt_sim_param, wt_sim_param$Turbine), function(params) {montecarlo_sim(params, n_events=20000, dt_start=sim_start_datetime)})
+sim_start_dt <- "2023-01-01 00"
+sim_res_list <- lapply(split(wt_sim_param, wt_sim_param$Turbine), function(params) {montecarlo_sim(params, n_events=15000, dt_start=sim_start_dt)})
 
 montecarlo_events <- bind_rows(sim_res_list, .id = "Turbine")
-montecarlo_events$Turbine <- as.factor(montecarlo_events$Turbine)
+# montecarlo_events$Turbine <- as.factor(montecarlo_events$Turbine)
+```
+
+```{r}
+#| label: A-convergence-plots
+
+
+Turbines_A <- montecarlo_events |> 
+  filter(state == 1) |>
+  ggplot(aes(x=timestamp, y=A_U, color=Turbine)) +
+  geom_point(alpha=0.7, size=1) 
+
+
+# mc_A_turbines <- plot(Turbines_A / (tbl_sim_param + img)) 
+mc_A_turbines <- plot(Turbines_A) 
+mc_A_turbines
+
+
+
+```
+
+
+```{r}
+
+
+montecarlo_events |>
+  group_by(Turbine) |>  
+  filter(state == 1) |>
+  summarise( A = last(A_U)) # check corresponding duration per turbine
+
+
 ```
 
 ```{r}

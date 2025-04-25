@@ -206,8 +206,8 @@ find_best_fit <- function(turbine, duration) {
 #' @examples
 #' \dontrun{
 #' sim_parameters <- list(frate = 0.01, meanlog = 1, sdlog = 0.5)
-#' sim_df <- montecarlo_sim(sim_parameters, n_events = 100)
-#' head(sim_df)
+#' df_sim <- montecarlo_sim(sim_parameters, n_events = 100)
+#' head(df_sim)
 #' }
 #' @importFrom dplyr tibble select
 #' @importFrom lubridate ymd_h
@@ -231,13 +231,13 @@ montecarlo_sim <- function(sim_parameters, n_events, dt_start) {
 
   set.seed(1982)  # For reproducibility
 
-  # Simulate tim-to-failure (exponential distribution)
+  # Simulate time-to-failure (exponential distribution)
   ttf_sim <- rexp(n_events, rate = lambda)
 
   # Simulate time-to-repair (lognormal distribution)
   ttr_sim <- rlnorm(n_events, meanlog = meanlog, sdlog = sdlog)
 
-  sim_df <- dplyr::tibble(
+  df_sim <- dplyr::tibble(
     event = seq(1:n_events),
     ttf = ttf_sim,
     ttr = ttr_sim,
@@ -245,23 +245,22 @@ montecarlo_sim <- function(sim_parameters, n_events, dt_start) {
     total_time = cumsum(ttf_sim + ttr_sim)
   )
 
-  # TODO: Add df with indices calculated from the simulation
-  # A = sum(sim_df$ttf)/last(sim_df$total_time)
-
-  # U = sum(sim_df$ttr)/last(sim_df$total_time)
+  df_sim$A <- cumsum(df_sim$ttf) / df_sim$total_time
+  df_sim$U <- 1-df_sim$A 
 
   # Intercalate ttf and ttr into a single vector
-  ttf_ttr_intercalated <- as.vector(rbind(sim_df$ttf, sim_df$ttr))
+  ttf_ttr_intercalated <- as.vector(rbind(df_sim$ttf, df_sim$ttr))
+  A_U_intercalated <- as.vector(rbind(df_sim$A, df_sim$U))
 
   # Build a data frame
   results <- dplyr::tibble(
     duration = ttf_ttr_intercalated,
     state = rep(c(1, 0), length.out = length(ttf_ttr_intercalated)),
-    timestamp = lubridate::ymd_h(dt_start) + seconds(c(0, cumsum(duration[-length(duration)]) * 3600))
+    timestamp = lubridate::ymd_h(dt_start) + seconds(c(0, cumsum(duration[-length(duration)]) * 3600)),
+    A_U = A_U_intercalated
   )
 
-  results <- results |> dplyr::select(timestamp, state, duration)
-
+  results <- results |> dplyr::select(timestamp, state, duration, A_U)
   results
 }
 
