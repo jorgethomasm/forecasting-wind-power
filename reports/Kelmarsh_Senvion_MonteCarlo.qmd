@@ -209,26 +209,24 @@ plt_boxplt_turbines_r <- ggplot(relia_2017_2021, aes(x = Turbine, y = 1/MTTR)) +
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
   ggtitle("Repair Rates (2017-2021) for each Kelmarsh Wind Turbines")
 
-plt_rrate <- plot(plt_boxplt_years_r / (plt_boxplt_turbines_r + img)) 
+plt_rrate <- (plt_boxplt_years_r / (plt_boxplt_turbines_r + img)) 
 plt_rrate
 
 # Save PNG of plt_frate
 # ggsave("./reports/online_assets/plt_frate.png", plt_rrate, width = 12, height = 8, dpi = 300, bg = "white")
-
  ```
 
-## Fit pdf to Repair times
+
 
 ```{r}
 #| label: fit-ttr-pdfs
 #| eval: false
 
 gof_list <- lapply(split(ttr_2017_2021, ttr_2017_2021$Turbine), function(df) {find_best_fit(df$Turbine, df$TTR)})
-
 print(gof_list)
 ```
 
-## Parameters per Wind Turbine
+## Fit Best PDF to Repair Times (TTRs)
 
 ```{r}
 #| label: fit-found-best-dist
@@ -256,7 +254,7 @@ wt_sim_param <- frates_cte |>
 
 ```
 
-## Simulation Parameters
+### Parameters per Wind Turbine
 
 ```{r}
 #| label: sim-parameters
@@ -285,20 +283,25 @@ tbl_sim_param <- gt(wt_sim_param) |>
     heading.title.font.size = 20,
     heading.subtitle.font.size = 16,
     row.striping.background_color = "#f0f8ff"
-  ) |> opt_row_striping()
+  ) |> 
+  opt_row_striping()
 
 ```
 
-
 ```{r}
-sim_start_dt <- "2023-01-01 00"
+#| label: run-mcsim-single-component
+#| eval: false
 
+sim_start_dt <- "2023-01-01 00"
 df_sim <- montecarlo_sim(wt_sim_param[1,], n_events=15000, dt_start=sim_start_dt)
 
 ```
 
+## Chronological Monte Carlo Simulation
+
 ```{r}
-#| label: run-montecarlo
+#| label: run-simmc-all
+#| eval: true
 
 sim_start_dt <- "2023-01-01 00"
 sim_res_list <- lapply(split(wt_sim_param, wt_sim_param$Turbine), function(params) {montecarlo_sim(params, n_events=15000, dt_start=sim_start_dt)})
@@ -308,35 +311,28 @@ montecarlo_events <- bind_rows(sim_res_list, .id = "Turbine")
 ```
 
 ```{r}
-#| label: A-convergence-plots
+#| label: A-convergence-plot
+#| eval: true
 
+#' Post: After selecting constant failure rates for the turbine and performing a grid search to fit the best distribution to repair-times (it's 
+#' never exponential...) MC should be the way-to-go nowadays... 
 
-Turbines_A <- montecarlo_events |> 
-  filter(state == 1) |>
-  ggplot(aes(x=timestamp, y=A_U, color=Turbine)) +
-  # geom_point(alpha=0.7, size=1) +
-  geom_line()
-
-
-# mc_A_turbines <- plot(Turbines_A / (tbl_sim_param + img)) 
-mc_A_turbines <- plot(Turbines_A) 
-mc_A_turbines
-
-
-
-```
-
-
-```{r}
-
-
+# Labels for plot
 montecarlo_events |>
   group_by(Turbine) |>  
   filter(state == 1) |>
   summarise( A = last(A_U)) # check corresponding duration per turbine
 
+plt_turbines_A <- montecarlo_events |> 
+  filter(state == 1) |>
+  ggplot(aes(x=timestamp, y=A_U, color=Turbine)) +  
+  geom_line() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
+  labs(title="Monte Carlo Simulation - Six Senvion MM92 Wind Turbines", subtitle="Convergence of Availability per Turbine", x=paste("Years since", year(montecarlo_events$timestamp[1])), y="Availability")
 
+plt_turbines_A
 ```
+
 
 ```{r}
 #| label: sys-algo
@@ -348,10 +344,14 @@ max_min_ts <- montecarlo_events |>
   summarise(max_ts = max(timestamp))
 
 # time_grid_max <- seq(min(montecarlo_events$timestamp), max(montecarlo_events$timestamp), by = "hour")
-time_grid_min <- seq(min(montecarlo_events$timestamp), min(max_min_ts$max_ts), by = "hour")
+time_grid_min <- seq(min(montecarlo_events$timestamp), min(max_min_ts$max_ts), by = "mins")
 total_sim_t <-  last(time_grid_min) - first(time_grid_min)
 total_sim_t_hours <- lubridate::time_length(total_sim_t, unit = "hours")
 total_sim_t_year <- lubridate::time_length(total_sim_t, unit = "years")
+
+montecarlo_events_mins  <- montecarlo_events |>
+  mutate(timestamp = lubridate::round_date(timestamp, unit="minutes"))
+
 
 # 2 For each turbine, interpolate the state at each hour
 # turbine_states <- montecarlo_events |>
@@ -364,7 +364,7 @@ total_sim_t_year <- lubridate::time_length(total_sim_t, unit = "years")
 #   ungroup()
 
 
-turbine_states <- montecarlo_events |>
+turbine_states <- montecarlo_events_mins |>
   dplyr::select(Turbine, timestamp, state) |>
   group_by(Turbine) |>
   arrange(timestamp) |>
