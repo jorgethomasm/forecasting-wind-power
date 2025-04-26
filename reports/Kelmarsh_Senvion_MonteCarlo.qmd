@@ -35,6 +35,7 @@ library(arrow)
 library(here)
 library(dunn.test)
 library(fitdistrplus)
+library(truncdist)
 library(gt)
 library(patchwork)
 # library(paletteer)
@@ -239,7 +240,7 @@ ttr_lnorm_fits <- lapply(split(ttr_2017_2021, ttr_2017_2021$Turbine), function(d
 # Extract lognormal parameters from ttr_lnorm_fits
 ttr_params <- lapply(names(ttr_lnorm_fits), function(turb) {
   fit <- ttr_lnorm_fits[[turb]]
-  tibble(
+  dplyr::tibble(    
     Turbine = turb,
     meanlog = fit$estimate["meanlog"],
     sdlog = fit$estimate["sdlog"]
@@ -304,7 +305,7 @@ df_sim <- montecarlo_sim(wt_sim_param[1,], n_events=15000, dt_start=sim_start_dt
 #| eval: true
 
 sim_start_dt <- "2023-01-01 00"
-sim_res_list <- lapply(split(wt_sim_param, wt_sim_param$Turbine), function(params) {montecarlo_sim(params, n_events=15000, dt_start=sim_start_dt)})
+sim_res_list <- lapply(split(wt_sim_param, wt_sim_param$Turbine), function(params) {montecarlo_sim(params, n_events=20000, dt_start=sim_start_dt)})
 
 montecarlo_events <- bind_rows(sim_res_list, .id = "Turbine")
 # montecarlo_events$Turbine <- as.factor(montecarlo_events$Turbine)
@@ -323,14 +324,28 @@ montecarlo_events |>
   filter(state == 1) |>
   summarise( A = last(A_U)) # check corresponding duration per turbine
 
-plt_turbines_A <- montecarlo_events |> 
-  filter(state == 1) |>
-  ggplot(aes(x=timestamp, y=A_U, color=Turbine)) +  
+plt_turbines_U <- montecarlo_events |> 
+  filter(state == 0) |>
+  ggplot(aes(x=timestamp, y=A_U*8760, color=Turbine)) +  
   geom_line() +
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
-  labs(title="Monte Carlo Simulation - Six Senvion MM92 Wind Turbines", subtitle="Convergence of Availability per Turbine", x=paste("Years since", year(montecarlo_events$timestamp[1])), y="Availability")
+  labs(title="Monte Carlo Simulation - Six Senvion MM92 Wind Turbines", subtitle="Convergence of the Forced Outage Rate index (FOR) per Turbine", x=paste("Years since", year(montecarlo_events$timestamp[1])), y="FOR\n[h/yr.]", caption="1 Year = 8760 hours.")
 
-plt_turbines_A
+plot(plt_turbines_U)
+```
+
+```{r}
+#| label: sys-algo-debug
+
+event_times <- c(0, 344, 812, 1300)  # Times when turbine changes state
+states <- c(1, 0, 1, 0, 1)  # 1 = up, 0 = down
+# Define 10-minute grid
+t_grid <- seq(0, 1500, by = 10)
+# Create step function
+state_fun <- stepfun(event_times, states)
+# Evaluate turbine state at each 10-min grid point
+aligned_states <- state_fun(t_grid)
+
 ```
 
 
@@ -344,25 +359,25 @@ max_min_ts <- montecarlo_events |>
   summarise(max_ts = max(timestamp))
 
 # time_grid_max <- seq(min(montecarlo_events$timestamp), max(montecarlo_events$timestamp), by = "hour")
-time_grid_min <- seq(min(montecarlo_events$timestamp), min(max_min_ts$max_ts), by = "mins")
-total_sim_t <-  last(time_grid_min) - first(time_grid_min)
-total_sim_t_hours <- lubridate::time_length(total_sim_t, unit = "hours")
-total_sim_t_year <- lubridate::time_length(total_sim_t, unit = "years")
+time_grid_min <- seq(min(montecarlo_events$timestamp), min(max_min_ts$max_ts), by = "5 mins")
+t_grid <- seq(0, length(time_grid_min), by = 5)
+states <- rep(c(1, 0), length.out = length(test$timestamp)+1)
 
+test  <- montecarlo_events |> filter(Turbine == "T06")
+
+# Create step function
+state_fun <- stepfun(test$timestamp, states)
+aligned_states <- state_fun(time_grid_min)
+
+test_df  <- tibble(timestamp = time_grid_min, state = aligned_states)
+
+# total_sim_t <-  last(time_grid_min) - first(time_grid_min)
+# total_sim_t_hours <- lubridate::time_length(total_sim_t, unit = "hours")
+# total_sim_t_year <- lubridate::time_length(total_sim_t, unit = "years")
+
+# Round timestamp to minutes
 montecarlo_events_mins  <- montecarlo_events |>
   mutate(timestamp = lubridate::round_date(timestamp, unit="minutes"))
-
-
-# 2 For each turbine, interpolate the state at each hour
-# turbine_states <- montecarlo_events |>
-#   dplyr::select(Turbine, timestamp, state) |>
-#   group_by(Turbine) |>
-#   arrange(timestamp) |>
-#   tidyr::complete(timestamp = time_grid_max) |>
-#   tidyr::fill(state, .direction = "down") |>
-#   filter(timestamp %in% time_grid_min) |>
-#   ungroup()
-
 
 turbine_states <- montecarlo_events_mins |>
   dplyr::select(Turbine, timestamp, state) |>

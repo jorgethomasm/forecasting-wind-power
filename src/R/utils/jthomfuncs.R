@@ -189,7 +189,8 @@ find_best_fit <- function(turbine, duration) {
 #'   \code{meanlog} (meanlog parameter for lognormal repair time), and \code{sdlog} (sdlog parameter for lognormal repair time).
 #' @param n_events Integer. Number of failure-repair cycles to simulate.
 #' @param dt_start character. Start date and time for the simulation in "YYYY-MM-DD HH" format.
-#' 
+#' @param ttf_min_duration Numeric. Minimum duration for time-to-failure (TTF) in hours.
+#' @param ttr_min_duration Numeric. Minimum duration for time-to-repair (TTR) in hours.
 #' @details
 #' The function generates \code{n_events} time-to-failure values from an exponential distribution with rate \code{frate},
 #' and \code{n_events} time-to-repair values from a lognormal distribution with parameters \code{meanlog} and \code{sdlog}.
@@ -212,7 +213,7 @@ find_best_fit <- function(turbine, duration) {
 #' @importFrom dplyr tibble select
 #' @importFrom lubridate ymd_h
 #' @export
-montecarlo_sim <- function(sim_parameters, n_events, dt_start) {
+montecarlo_sim <- function(sim_parameters, n_events, dt_start, ttf_min_duration = 1/6, ttr_min_duration = 1/6) {
   # Check if the required parameters are provided
   if (missing(sim_parameters) || missing(n_events)) {
     stop("Please provide both sim_parameters and n_events.")
@@ -230,12 +231,13 @@ montecarlo_sim <- function(sim_parameters, n_events, dt_start) {
   sdlog <- sim_parameters$sdlog       # Lognormal sdlog for TTR
 
   set.seed(1982)  # For reproducibility
-
   # Simulate time-to-failure (exponential distribution)
-  ttf_sim <- rexp(n_events, rate = lambda)
+  # ttf_sim <- rexp(n_events, rate = lambda)
+  ttf_sim <- truncdist::rtrunc(n = n_events, spec = "exp", a = ttf_min_duration, b = Inf, rate = lambda)
 
   # Simulate time-to-repair (lognormal distribution)
-  ttr_sim <- rlnorm(n_events, meanlog = meanlog, sdlog = sdlog)
+  # ttr_sim <- rlnorm(n_events, meanlog = meanlog, sdlog = sdlog)
+  ttr_sim <- truncdist::rtrunc(n = n_events, spec = "lnorm", a = ttr_min_duration, b = Inf, meanlog = meanlog, sdlog = sdlog)  
 
   df_sim <- dplyr::tibble(
     event = seq(1:n_events),
