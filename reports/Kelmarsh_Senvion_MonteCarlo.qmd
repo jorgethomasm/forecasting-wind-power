@@ -346,16 +346,49 @@ sim_events_trunc <- bind_rows(sim_res_trunc, .id = "Turbine")
 max_min_timestamp <- sim_events_trunc |> group_by(Turbine) |> summarise(max_ts = max(timestamp)) |> arrange(max_ts) 
 print(max_min_timestamp)
 
-time_grid <- seq(min(sim_events_trunc$timestamp), ceiling_date(max(sim_events_trunc$timestamp), "10 mins"), by = "10 mins")
-states <- rep(NA, length.out = length(time_grid))
+time_grid_longest <- seq(min(sim_events_trunc$timestamp), ceiling_date(max(sim_events_trunc$timestamp), "10 mins"), by = "10 mins")
+states_longest <- rep(NA, length.out = length(time_grid))
+time_grid_df_longest <- tibble(timestamp = time_grid_longest, state=states_longest)
 
-df_tgrid <- tibble(timestamp = time_grid, state=states)
-
-# time_grid_min <- seq(min(max_min_timestamp$timestamp), min(max_min_timestamp$max_ts), by = "10 mins")
+time_grid_shortest <- seq(min(max_min_timestamp$timestamp), ceiling_date(min(max_min_timestamp$max_ts), "10 mins"), by = "10 mins")
+states_shortest <- rep(NA, length.out = length(time_grid_shortest))
 # t_grid <- seq(0, length(time_grid_min), by = 5)
-# states <- rep(c(1, 0), length.out = length(test$timestamp)+1)
 
-# test <- tibble(sim_events_trunc |> filter(Turbine == "T06")_
+# events <- sim_events_trunc |>
+#   dplyr::select(Turbine, timestamp, state) |>  
+#   arrange(Turbine, timestamp) |>
+#   group_by(Turbine) |>    
+#   full_join(time_grid_df_longest, by="timestamp") |> 
+#   tidyr::fill(state.x, .direction = "down") |>
+#   tidyr::fill(Turbine, .direction = "down") |>  
+#   ungroup() |> 
+#   rename(state = state.x) |>
+#   arrange(Turbine, timestamp)
+
+# events$state.y <- NULL
+
+events_list <- lapply(split(sim_events_trunc, sim_events_trunc$Turbine), function(df) {  
+  df |>
+  dplyr::select(Turbine, timestamp, state) |>    
+  full_join(time_grid_df_longest, by="timestamp") |> 
+  arrange(timestamp) |>
+  tidyr::fill(state.x, .direction = "down") |>
+  tidyr::fill(Turbine, .direction = "down") |>    
+  rename(state = state.x)  
+  }
+  )
+
+events <- bind_rows(events_list, .id = "Turbine")
+events$state.y <- NULL
+
+
+events_wide <- events |>
+  select(Turbine, timestamp, state) |>
+  pivot_wider(
+    names_from = Turbine,
+    values_from = state
+  ) |>
+  arrange(timestamp)
 
 # Create step function
 # state_fun <- stepfun(test$timestamp, states)
@@ -373,11 +406,11 @@ df_tgrid <- tibble(timestamp = time_grid, state=states)
 
 test_full <- test |>
   dplyr::select(Turbine, timestamp, state) |>    
-  full_join(df_tgrid, by="timestamp") |> 
+  full_join(time_grid_df_longest, by="timestamp") |> 
   arrange(timestamp) |>
   tidyr::fill(state.x, .direction = "down") |>
   tidyr::fill(Turbine, .direction = "down") |>
-  rename(state = state.x)
+  rename(state = state.x) 
 
 test_full$state.y <- NULL
 
