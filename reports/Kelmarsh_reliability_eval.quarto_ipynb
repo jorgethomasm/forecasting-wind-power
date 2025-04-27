@@ -45,7 +45,7 @@
         "Kelmarsh Wind Farm is located near Haselbach, Northamptonshire, UK.\n",
         ":::\n"
       ],
-      "id": "fbc9a42b"
+      "id": "284ce041"
     },
     {
       "cell_type": "code",
@@ -95,7 +95,7 @@
       "source": [
         "## Events Catalogue and Status\n"
       ],
-      "id": "5697501d"
+      "id": "ab2515d5"
     },
     {
       "cell_type": "code",
@@ -735,7 +735,7 @@
       "source": [
         "## Reliability Parameters\n"
       ],
-      "id": "a41be84a"
+      "id": "a86888e5"
     },
     {
       "cell_type": "code",
@@ -759,7 +759,7 @@
         "\n",
         "## 2016\n"
       ],
-      "id": "e012fbca"
+      "id": "b95c950e"
     },
     {
       "cell_type": "code",
@@ -767,7 +767,7 @@
       "source": [
         "pl_time_state[0].show()"
       ],
-      "id": "2ae6cc44",
+      "id": "2d44ec2a",
       "execution_count": null,
       "outputs": []
     },
@@ -777,7 +777,7 @@
       "source": [
         "## 2017\n"
       ],
-      "id": "0214f39b"
+      "id": "6570c637"
     },
     {
       "cell_type": "code",
@@ -785,7 +785,7 @@
       "source": [
         "pl_time_state[1].show()"
       ],
-      "id": "abf822f6",
+      "id": "04fd89a9",
       "execution_count": null,
       "outputs": []
     },
@@ -795,7 +795,7 @@
       "source": [
         "## 2018\n"
       ],
-      "id": "95de654b"
+      "id": "1929a281"
     },
     {
       "cell_type": "code",
@@ -803,7 +803,7 @@
       "source": [
         "pl_time_state[2].show()"
       ],
-      "id": "bee78954",
+      "id": "d429db28",
       "execution_count": null,
       "outputs": []
     },
@@ -813,7 +813,7 @@
       "source": [
         "## 2019\n"
       ],
-      "id": "bfea50b3"
+      "id": "2839a426"
     },
     {
       "cell_type": "code",
@@ -821,7 +821,7 @@
       "source": [
         "pl_time_state[3].show()"
       ],
-      "id": "539cb4d3",
+      "id": "4a1ac34b",
       "execution_count": null,
       "outputs": []
     },
@@ -831,7 +831,7 @@
       "source": [
         "## 2020\n"
       ],
-      "id": "8502ab86"
+      "id": "5795ed07"
     },
     {
       "cell_type": "code",
@@ -839,7 +839,7 @@
       "source": [
         "pl_time_state[4].show()"
       ],
-      "id": "3888c7e7",
+      "id": "96cda60a",
       "execution_count": null,
       "outputs": []
     },
@@ -849,7 +849,7 @@
       "source": [
         "## 2021\n"
       ],
-      "id": "51b5e81d"
+      "id": "de5e87fd"
     },
     {
       "cell_type": "code",
@@ -857,7 +857,7 @@
       "source": [
         "pl_time_state[5].show()"
       ],
-      "id": "1fc562b2",
+      "id": "2cd21cd8",
       "execution_count": null,
       "outputs": []
     },
@@ -867,7 +867,7 @@
       "source": [
         "## 2022\n"
       ],
-      "id": "44221d8b"
+      "id": "a2d68c0f"
     },
     {
       "cell_type": "code",
@@ -875,7 +875,7 @@
       "source": [
         "pl_time_state[6].show()"
       ],
-      "id": "63938d0a",
+      "id": "ceeb5d83",
       "execution_count": null,
       "outputs": []
     },
@@ -889,7 +889,7 @@
         "\n",
         "### Total\n"
       ],
-      "id": "2b2f819e"
+      "id": "13706098"
     },
     {
       "cell_type": "code",
@@ -940,7 +940,7 @@
       "source": [
         "### Per Wind Turbine\n"
       ],
-      "id": "28e166b3"
+      "id": "aa1f20d6"
     },
     {
       "cell_type": "code",

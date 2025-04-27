@@ -157,6 +157,8 @@ plot(plt_frate)
 
 ```
 
+## Failure Rates
+
 ```{r}
 #| label: constant-frates-per-turbine
 #| eval: true

@@ -403,6 +403,9 @@ tstates_dur = tstates_dur.with_columns(
 
 tstates_dur =  tstates_dur.drop_nulls()
 
+# TODO Insert code here to remove unrealistic TTRs 
+
+
 # # Get each year duration
 # year_durations = tstates_dur.group_by("Year").agg(
 #     pl.col("Timestamp").max().alias("year_end"),
@@ -417,6 +420,19 @@ tstates_dur =  tstates_dur.drop_nulls()
 
 tstates_dur = tstates_dur.rename({"wt": "Turbine"}).drop_nulls()
 tstates_dur = tstates_dur.sort(["Turbine", "Timestamp"])
+```
+
+```{python}
+#| label: unrealistic-durations
+#| eval: false
+
+# Remove unrealistic durations, e.g. short ttrs
+
+shorts = tstates_dur.filter(pl.col("Duration") < 1/6)
+
+# More than 50% of the catalogued Forced Outages are of very short nature. There are sorts of fail reattempts of around 2 minutes where the "Frequency converter is not ready". It is worth to compare this behaviour with other turbines manufacturers. 
+
+
 ```
 
 
@@ -677,8 +693,6 @@ pl_time_state[6].show()
 ```{python}
 #| label: failure-hist
 #| eval: true
-
-import plotly.express as px
 
 # Count the frequency of each Message
 message_counts = ttr.group_by("Message").agg(
