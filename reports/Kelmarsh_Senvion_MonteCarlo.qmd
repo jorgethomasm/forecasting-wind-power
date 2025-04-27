@@ -40,6 +40,8 @@ library(gt)
 library(patchwork)
 # library(paletteer)
 
+# conflict_prefer("select", "dplyr")
+
 fpath_processed <- "../data/processed"
 fpath_interim <- "../data/interim/"
 fpath_online <- "./online_assets/"
@@ -347,25 +349,12 @@ max_min_timestamp <- sim_events_trunc |> group_by(Turbine) |> summarise(max_ts =
 print(max_min_timestamp)
 
 time_grid_longest <- seq(min(sim_events_trunc$timestamp), ceiling_date(max(sim_events_trunc$timestamp), "10 mins"), by = "10 mins")
-states_longest <- rep(NA, length.out = length(time_grid))
+states_longest <- rep(NA, length.out = length(time_grid_longest))
 time_grid_df_longest <- tibble(timestamp = time_grid_longest, state=states_longest)
 
-time_grid_shortest <- seq(min(max_min_timestamp$timestamp), ceiling_date(min(max_min_timestamp$max_ts), "10 mins"), by = "10 mins")
+time_grid_shortest <- seq(min(sim_events_trunc$timestamp), ceiling_date(min(max_min_timestamp$max_ts), "10 mins"), by = "10 mins")
 states_shortest <- rep(NA, length.out = length(time_grid_shortest))
-# t_grid <- seq(0, length(time_grid_min), by = 5)
-
-# events <- sim_events_trunc |>
-#   dplyr::select(Turbine, timestamp, state) |>  
-#   arrange(Turbine, timestamp) |>
-#   group_by(Turbine) |>    
-#   full_join(time_grid_df_longest, by="timestamp") |> 
-#   tidyr::fill(state.x, .direction = "down") |>
-#   tidyr::fill(Turbine, .direction = "down") |>  
-#   ungroup() |> 
-#   rename(state = state.x) |>
-#   arrange(Turbine, timestamp)
-
-# events$state.y <- NULL
+time_grid_df_shortest <- tibble(timestamp = time_grid_shortest, system=states_shortest)
 
 events_list <- lapply(split(sim_events_trunc, sim_events_trunc$Turbine), function(df) {  
   df |>
@@ -381,28 +370,40 @@ events_list <- lapply(split(sim_events_trunc, sim_events_trunc$Turbine), functio
 events <- bind_rows(events_list, .id = "Turbine")
 events$state.y <- NULL
 
-
-events_wide <- events |>
-  select(Turbine, timestamp, state) |>
+events_wide <- events |>  
   pivot_wider(
     names_from = Turbine,
-    values_from = state
-  ) |>
+    values_from = state) |>
   arrange(timestamp)
 
-# Create step function
-# state_fun <- stepfun(test$timestamp, states)
-# aligned_states <- state_fun(time_grid_min)
+events_wide_grid <- events_wide |>
+  right_join(time_grid_df_shortest, by="timestamp")
 
-# test_df  <- tibble(timestamp = time_grid_min, state = aligned_states)
 
-# total_sim_t <-  last(time_grid_min) - first(time_grid_min)
-# total_sim_t_hours <- lubridate::time_length(total_sim_t, unit = "hours")
-# total_sim_t_year <- lubridate::time_length(total_sim_t, unit = "years")
+events_wide_grid <- events_wide_grid |>   
+  mutate(system = rowSums(dplyr::select(starts_with("T"))), na.rm = TRUE)
+    
+events_wide_grid$system <-  rowSums(events_wide_grid[, 2:7], na.rm = FALSE, dims = 1)
+events_wide_grid$system_MW <- events_wide_grid$system *2.05
 
-# Round timestamp to minutes
-# sim_events_mins  <- sim_events_trunc |> mutate(timestamp = lubridate::round_date(timestamp, unit="minutes"))
+events_test <- events_wide_grid[1:10000,]
 
+
+
+
+```
+
+```{r}
+
+
+ggplot(events_test, aes(x = timestamp, y = system_MW)) + geom_step()
+  
+
+
+```
+
+
+```{r}
 
 test_full <- test |>
   dplyr::select(Turbine, timestamp, state) |>    
@@ -423,9 +424,7 @@ test_10000 <- test_full[1:10000,]
 #   tidyr::fill(state, .direction = "down") |>
 #   filter(timestamp %in% time_grid_min) |>
 #   ungroup()
-
 ```
-
 
 ```{r}
 #| label: probs_indices
@@ -456,6 +455,6 @@ ggplot(sim_events[1:500, ], aes(x = timestamp, y = state, color=Turbine)) +
   scale_y_continuous(limits = c(-0.01, 1.01), breaks = c(0, 1))
   labs(title = "Time / State Diagram for T01", x = "datetime", y = "State (1=Up, 0=Down)") +
   # facet_grid(rows=Turbine) + 
-  theme_minimal()
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
 
 ```
