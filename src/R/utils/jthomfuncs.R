@@ -189,6 +189,7 @@ find_best_fit <- function(turbine, duration) {
 #'   \code{meanlog} (meanlog parameter for lognormal repair time), and \code{sdlog} (sdlog parameter for lognormal repair time).
 #' @param n_events Integer. Number of failure-repair cycles to simulate.
 #' @param dt_start character. Start date and time for the simulation in "YYYY-MM-DD HH" format.
+#' @param  truncate_dist Logical. If TRUE, truncates the distributions to avoid unrealisticly short durations. Ideal for combining  components.
 #' @param ttf_min_duration Numeric. Minimum duration for time-to-failure (TTF) in hours.
 #' @param ttr_min_duration Numeric. Minimum duration for time-to-repair (TTR) in hours.
 #' @details
@@ -207,13 +208,14 @@ find_best_fit <- function(turbine, duration) {
 #' @examples
 #' \dontrun{
 #' sim_parameters <- list(frate = 0.01, meanlog = 1, sdlog = 0.5)
-#' df_sim <- montecarlo_sim(sim_parameters, n_events = 100)
+#' df_sim <- mcs_events(sim_parameters, n_events = 100)
 #' head(df_sim)
 #' }
 #' @importFrom dplyr tibble select
 #' @importFrom lubridate ymd_h
+#' @imoprtFrom truncdist rtrunc
 #' @export
-montecarlo_sim <- function(sim_parameters, n_events, dt_start, ttf_min_duration = 1/6, ttr_min_duration = 1/6) {
+mcs_events <- function(sim_parameters, n_events, dt_start, truncate_dist = FALSE, ttf_min_duration = 1/6, ttr_min_duration = 1/6) {
   # Check if the required parameters are provided
   if (missing(sim_parameters) || missing(n_events)) {
     stop("Please provide both sim_parameters and n_events.")
@@ -225,19 +227,33 @@ montecarlo_sim <- function(sim_parameters, n_events, dt_start, ttf_min_duration 
   }
 
   # Extract parameters from the list
-
   lambda <- sim_parameters$frate      # Failure rate [h^-1]
   meanlog <- sim_parameters$meanlog   # Lognormal meanlog for TTR
   sdlog <- sim_parameters$sdlog       # Lognormal sdlog for TTR
 
   set.seed(1982)  # For reproducibility
-  # Simulate time-to-failure (exponential distribution)
-  # ttf_sim <- rexp(n_events, rate = lambda)
-  ttf_sim <- truncdist::rtrunc(n = n_events, spec = "exp", a = ttf_min_duration, b = Inf, rate = lambda)
 
-  # Simulate time-to-repair (lognormal distribution)
-  # ttr_sim <- rlnorm(n_events, meanlog = meanlog, sdlog = sdlog)
-  ttr_sim <- truncdist::rtrunc(n = n_events, spec = "lnorm", a = ttr_min_duration, b = Inf, meanlog = meanlog, sdlog = sdlog)  
+  if (truncate_dist) {
+    # Simulate time-to-failure (exponential distribution)
+    ttf_sim <- truncdist::rtrunc(n = n_events,
+                                 spec = "exp",
+                                 a = ttf_min_duration,
+                                 b = Inf,
+                                 rate = lambda)
+    # Simulate time-to-repair (lognormal distribution)
+    ttr_sim <- truncdist::rtrunc(n = n_events,
+                                 spec = "lnorm",
+                                 a = ttr_min_duration,
+                                 b = Inf,
+                                 meanlog = meanlog,
+                                 sdlog = sdlog)
+
+  } else {
+    # Simulate time-to-failure (exponential distribution)
+    ttf_sim <- rexp(n_events, rate = lambda)
+    # Simulate time-to-repair (lognormal distribution)
+    ttr_sim <- rlnorm(n_events, meanlog = meanlog, sdlog = sdlog)
+  }
 
   df_sim <- dplyr::tibble(
     event = seq(1:n_events),
@@ -258,7 +274,7 @@ montecarlo_sim <- function(sim_parameters, n_events, dt_start, ttf_min_duration 
   results <- dplyr::tibble(
     duration = ttf_ttr_intercalated,
     state = rep(c(1, 0), length.out = length(ttf_ttr_intercalated)),
-    timestamp = lubridate::ymd_h(dt_start) + seconds(c(0, cumsum(duration[-length(duration)]) * 3600)),
+    timestamp = lubridate::ymd_h(dt_start) + seconds(c(0, cumsum(duration[-length(duration)])*3600)),
     A_U = A_U_intercalated
   )
 
