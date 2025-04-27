@@ -274,7 +274,7 @@ mcs_events <- function(sim_parameters, n_events, dt_start, truncate_dist = FALSE
   results <- dplyr::tibble(
     duration = ttf_ttr_intercalated,
     state = rep(c(1, 0), length.out = length(ttf_ttr_intercalated)),
-    timestamp = lubridate::ymd_h(dt_start) + seconds(c(0, cumsum(duration[-length(duration)])*3600)),
+    timestamp = lubridate::ymd_h(dt_start, tz="UTC") + seconds(c(0, cumsum(duration[-length(duration)])*3600)),
     A_U = A_U_intercalated
   )
 

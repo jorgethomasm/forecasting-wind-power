@@ -83,22 +83,14 @@ plt_bathtub <- ggplot(relia, aes(x=Year, y=`Failure Rate`, colour = Turbine)) +
 # Summary statistics by turbine
 relia |> 
   group_by(Turbine) |> 
-  summarise(mean = mean(`Failure Rate`), 
-            median = median(`Failure Rate`), 
-            sd = sd(`Failure Rate`), 
-            n = n()
-            )
+  summarise(mean = mean(`Failure Rate`), median = median(`Failure Rate`), sd = sd(`Failure Rate`), n = n())
 
 dunn_result_wt <- dunn.test(relia$`Failure Rate`, relia$Turbine, method="none", kw=TRUE, label=TRUE, wrap=TRUE)
 
 # Summary statistics by Year
 relia |>
   group_by(Year) |>
-  summarise(mean = mean(`Failure Rate`), 
-            median = median(`Failure Rate`), 
-            sd = sd(`Failure Rate`), 
-            n = n()
-            )
+  summarise(mean = mean(`Failure Rate`), median = median(`Failure Rate`), sd = sd(`Failure Rate`), n = n())
 
 dunn_result_year <- dunn.test(relia$`Failure Rate`, relia$Year, method="none", kw=TRUE, label=TRUE, wrap=TRUE)
 
@@ -293,12 +285,14 @@ tbl_sim_param <- gt(wt_sim_param) |>
 
 ## Chronological Monte Carlo Simulation
 
+### Components: Wind Turbines
 ```{r}
 #| label: run-simmc-all
 #| eval: true
 
 #' Post: After selecting constant failure rates for the turbine and performing grid-search to fit the best PDFs 
 #' to repair-times (it's never exponential...) MC should be the way-to-go nowadays... 
+#' You can see the distribution for a fleet, i.e., the whole Wind Park!
 
 # Simulation
 sim_start_dt <- "2023-01-01 00"
@@ -326,6 +320,7 @@ plt_turbines_U
 
 ```{r}
 #| label: sys-algo-debug
+#| eval: false
 
 event_times <- c(0, 344, 812, 1300)  # Times when turbine changes state
 states <- c(1, 0, 1, 0, 1)  # 1 = up, 0 = down
@@ -338,45 +333,63 @@ aligned_states <- state_fun(t_grid)
 
 ```
 
+### Kelmarsh Generation Capacity Curve
 
 ```{r}
 #| label: sys-algo
 
+sim_res_trunc <- lapply(split(wt_sim_param, wt_sim_param$Turbine), function(params) {mcs_events(params, n_events=20000, dt_start=sim_start_dt, truncate_dist = TRUE)})
+sim_events_trunc <- bind_rows(sim_res_trunc, .id = "Turbine")
+
 # 1) generate hourly time vector-> dt_start - max(datetime) per turbine (select min)
 
-max_min_ts <- sim_events |>
-  group_by(Turbine) |>
-  summarise(max_ts = max(timestamp))
+max_min_timestamp <- sim_events_trunc |> group_by(Turbine) |> summarise(max_ts = max(timestamp)) |> arrange(max_ts) 
+print(max_min_timestamp)
 
-# time_grid_max <- seq(min(sim_events$timestamp), max(sim_events$timestamp), by = "hour")
-time_grid_min <- seq(min(sim_events$timestamp), min(max_min_ts$max_ts), by = "5 mins")
-t_grid <- seq(0, length(time_grid_min), by = 5)
-states <- rep(c(1, 0), length.out = length(test$timestamp)+1)
+time_grid <- seq(min(sim_events_trunc$timestamp), ceiling_date(max(sim_events_trunc$timestamp), "10 mins"), by = "10 mins")
+states <- rep(NA, length.out = length(time_grid))
 
-test  <- sim_events |> filter(Turbine == "T06")
+df_tgrid <- tibble(timestamp = time_grid, state=states)
+
+# time_grid_min <- seq(min(max_min_timestamp$timestamp), min(max_min_timestamp$max_ts), by = "10 mins")
+# t_grid <- seq(0, length(time_grid_min), by = 5)
+# states <- rep(c(1, 0), length.out = length(test$timestamp)+1)
+
+# test <- tibble(sim_events_trunc |> filter(Turbine == "T06")_
 
 # Create step function
-state_fun <- stepfun(test$timestamp, states)
-aligned_states <- state_fun(time_grid_min)
+# state_fun <- stepfun(test$timestamp, states)
+# aligned_states <- state_fun(time_grid_min)
 
-test_df  <- tibble(timestamp = time_grid_min, state = aligned_states)
+# test_df  <- tibble(timestamp = time_grid_min, state = aligned_states)
 
 # total_sim_t <-  last(time_grid_min) - first(time_grid_min)
 # total_sim_t_hours <- lubridate::time_length(total_sim_t, unit = "hours")
 # total_sim_t_year <- lubridate::time_length(total_sim_t, unit = "years")
 
 # Round timestamp to minutes
-montecarlo_events_mins  <- sim_events |>
-  mutate(timestamp = lubridate::round_date(timestamp, unit="minutes"))
+# sim_events_mins  <- sim_events_trunc |> mutate(timestamp = lubridate::round_date(timestamp, unit="minutes"))
 
-turbine_states <- montecarlo_events_mins |>
-  dplyr::select(Turbine, timestamp, state) |>
-  group_by(Turbine) |>
+
+test_full <- test |>
+  dplyr::select(Turbine, timestamp, state) |>    
+  full_join(df_tgrid, by="timestamp") |> 
   arrange(timestamp) |>
-  tidyr::complete(timestamp = time_grid_min) |>
-  tidyr::fill(state, .direction = "down") |>
-  filter(timestamp %in% time_grid_min) |>
-  ungroup()
+  tidyr::fill(state.x, .direction = "down") |>
+  tidyr::fill(Turbine, .direction = "down") |>
+  rename(state = state.x)
+
+test_full$state.y <- NULL
+
+test_10000 <- test_full[1:10000,]
+# turbine_states <- test |>
+#   dplyr::select(Turbine, timestamp, state) |>
+#   group_by(Turbine) |>
+#   arrange(timestamp) |>
+#   tidyr::complete(timestamp = time_grid_min) |>
+#   tidyr::fill(state, .direction = "down") |>
+#   filter(timestamp %in% time_grid_min) |>
+#   ungroup()
 
 ```
 
