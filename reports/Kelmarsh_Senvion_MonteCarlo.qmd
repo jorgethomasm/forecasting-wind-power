@@ -303,7 +303,7 @@ sim_events <- bind_rows(sim_res_list, .id = "Turbine")
 
 ```{r}
 #| label: Plot-MCS-FOR-Convergence
-#| true
+#| eval: true
 
 label_df <- sim_events |>
       filter(state == 0) |>
@@ -364,7 +364,7 @@ sim_events_trunc <- bind_rows(sim_res_trunc, .id = "Turbine")
 # 1) generate hourly time vector-> dt_start - max(datetime) per turbine (select min)
 
 max_min_timestamp <- sim_events_trunc |> group_by(Turbine) |> summarise(max_ts = max(timestamp)) |> arrange(max_ts) 
-print(max_min_timestamp)
+#print(max_min_timestamp)
 
 time_grid_longest <- seq(min(sim_events_trunc$timestamp), ceiling_date(max(sim_events_trunc$timestamp), "10 mins"), by = "10 mins")
 states_longest <- rep(NA, length.out = length(time_grid_longest))
@@ -394,58 +394,38 @@ events_wide <- events |>
     values_from = state) |>
   arrange(timestamp)
 
-events_wide_grid <- events_wide |>
-  right_join(time_grid_df_shortest, by="timestamp")
+events_wide_grid <- events_wide |> right_join(time_grid_df_shortest, by="timestamp")
 
-
-events_wide_grid <- events_wide_grid |>   
-  mutate(system = rowSums(dplyr::select(starts_with("T"))), na.rm = TRUE)
+# events_wide_grid <- events_wide_grid |> mutate(system = rowSums(dplyr::select(starts_with("T"))), na.rm = TRUE)
     
 events_wide_grid$system <-  rowSums(events_wide_grid[, 2:7], na.rm = FALSE, dims = 1)
 events_wide_grid$system_MW <- events_wide_grid$system *2.05
 
-events_test <- events_wide_grid[1:10000,]
-
-
-
-
 ```
 
 ```{r}
+#| label: sys-gen-capacity-curve
+
+events_changes <- events_wide_grid |> filter(system != dplyr::lag(system) | is.na(dplyr::lag(system)))
+
+gen_capacity_curve <- ggplot(events_changes[5000:20000, ], aes(x = timestamp, y = system_MW)) + geom_step() +
+  labs(title = "Kelmarsh: Sytem Generation Capacity Curve", x = "Simulation Timeline", y = "Wind Farm\nCapacity\n[MW]") +
+  scale_y_continuous(limits = c(0, 13), breaks = seq(0, 15, by = 2.05), minor_breaks=NULL) +
+  # facet_grid(rows=Turbine) + 
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5))
+
+gen_capacity_curve
+
+capacity_curve_plotly <- ggplotly(gen_capacity_curve)
+
+capacity_curve_plotly
 
 
-ggplot(events_test, aes(x = timestamp, y = system_MW)) + geom_step()
-  
-
-
-```
-
-
-```{r}
-
-test_full <- test |>
-  dplyr::select(Turbine, timestamp, state) |>    
-  full_join(time_grid_df_longest, by="timestamp") |> 
-  arrange(timestamp) |>
-  tidyr::fill(state.x, .direction = "down") |>
-  tidyr::fill(Turbine, .direction = "down") |>
-  rename(state = state.x) 
-
-test_full$state.y <- NULL
-
-test_10000 <- test_full[1:10000,]
-# turbine_states <- test |>
-#   dplyr::select(Turbine, timestamp, state) |>
-#   group_by(Turbine) |>
-#   arrange(timestamp) |>
-#   tidyr::complete(timestamp = time_grid_min) |>
-#   tidyr::fill(state, .direction = "down") |>
-#   filter(timestamp %in% time_grid_min) |>
-#   ungroup()
 ```
 
 ```{r}
 #| label: probs_indices
+#| eval: false
 
 tt <- sim_events |>
   group_by(Turbine) |>  
@@ -456,23 +436,8 @@ probs <- sim_events |>
   filter(state == 1) |>
   summarise( A = sum(duration)/tt$tt[3]) # check corresponding duration per turbine
 
-
-
-
 # A = sum(sim_df$ttf)/last(sim_df$total_time)
 
 # U = sum(sim_df$ttr)/last(sim_df$total_time)
-
-```
-
-```{r}
-#| label: time-state-diagram
-
-ggplot(sim_events[1:500, ], aes(x = timestamp, y = state, color=Turbine)) +
-  geom_step() +
-  scale_y_continuous(limits = c(-0.01, 1.01), breaks = c(0, 1))
-  labs(title = "Time / State Diagram for T01", x = "datetime", y = "State (1=Up, 0=Down)") +
-  # facet_grid(rows=Turbine) + 
-  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
 
 ```
