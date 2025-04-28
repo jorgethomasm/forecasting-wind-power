@@ -296,6 +296,7 @@ align_sim_events <- function(sim_events, grid_freq = "10 mins") {
 
   # Count components
   n_components <- length(unique(sim_events$Turbine))
+  future::plan(future::multisession, workers = n_components)
 
   # Generate time grid
   max_min_timestamp <- sim_events |>
@@ -309,15 +310,14 @@ align_sim_events <- function(sim_events, grid_freq = "10 mins") {
                    by = grid_freq)
 
   # Align timestamps to the grid
-  events_list <- lapply(split(sim_events, sim_events$Turbine), function(df) {
-
-    df <-  df |> dplyr::select(Turbine, timestamp, state)
-    states <- c(ifelse(dplyr::first(df$state) == 0, 1, 0), df$state)
-    state_fun <- stepfun(df$timestamp, states)
-    evenly_spaced_states <- state_fun(time_grid)
-
-    dplyr::tibble(timestamp = time_grid, state = evenly_spaced_states)
-  }
+  events_list <- future.apply::future_lapply(
+    split(sim_events, sim_events$Turbine), function(df) {
+      df <-  df |> dplyr::select(Turbine, timestamp, state)
+      states <- c(ifelse(dplyr::first(df$state) == 0, 1, 0), df$state)
+      state_fun <- stepfun(df$timestamp, states)
+      evenly_spaced_states <- state_fun(time_grid)
+      dplyr::tibble(timestamp = time_grid, state = evenly_spaced_states)
+    }
   )
 
   events_df <- dplyr::bind_rows(events_list, .id = "Turbine")

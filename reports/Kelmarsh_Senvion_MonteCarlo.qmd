@@ -293,7 +293,7 @@ tbl_sim_param <- gt(wt_sim_param) |>
 
 #' Post: After selecting constant failure rates for the turbine and performing grid-search to fit the best PDFs 
 #' to repair-times (it's never exponential...) MC should be the way-to-go nowadays... 
-#' You can see the distribution for a fleet, i.e., the whole Wind Park!
+#' You can see the distribution for a fleet, i.e., the whole Wind Park! Vectorisation and parallisation techniques.
 
 sim_start_dt <- "2023-01-01 00"
 sim_res_list <- lapply(split(wt_sim_param, wt_sim_param$Turbine), function(params) {mcs_events(params, n_events=15000, dt_start=sim_start_dt, truncate_dist = FALSE)})
@@ -387,6 +387,7 @@ events_list <- lapply(split(sim_events_trunc, sim_events_trunc$Turbine), functio
   }
   )
 
+options(future.globals.maxSize = 2 * 1024^3)
 df_wide <- align_sim_events(sim_events_trunc)
 df_wide$total_MW <- df_wide$total *2.05
 
