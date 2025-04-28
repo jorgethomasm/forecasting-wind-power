@@ -45,7 +45,7 @@
         "Kelmarsh Wind Farm is located near Haselbach, Northamptonshire, UK.\n",
         ":::\n"
       ],
-      "id": "284ce041"
+      "id": "5ab84ab8"
     },
     {
       "cell_type": "code",
@@ -95,7 +95,7 @@
       "source": [
         "## Events Catalogue and Status\n"
       ],
-      "id": "ab2515d5"
+      "id": "6390adf1"
     },
     {
       "cell_type": "code",
@@ -485,6 +485,9 @@
         "\n",
         "tstates_dur =  tstates_dur.drop_nulls()\n",
         "\n",
+        "# TODO Insert code here to remove unrealistic TTRs \n",
+        "\n",
+        "\n",
         "# # Get each year duration\n",
         "# year_durations = tstates_dur.group_by(\"Year\").agg(\n",
         "#     pl.col(\"Timestamp\").max().alias(\"year_end\"),\n",
@@ -501,6 +504,23 @@
         "tstates_dur = tstates_dur.sort([\"Turbine\", \"Timestamp\"])"
       ],
       "id": "calc-durations",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "#| label: unrealistic-durations\n",
+        "#| eval: false\n",
+        "\n",
+        "# Remove unrealistic durations, e.g. short ttrs\n",
+        "\n",
+        "shorts = tstates_dur.filter(pl.col(\"Duration\") < 1/6)\n",
+        "\n",
+        "# More than 50% of the catalogued Forced Outages are of very short nature. There are sorts of fail reattempts of around 2 minutes where the \"Frequency converter is not ready\". It is worth to compare this behaviour with other turbines manufacturers. \n"
+      ],
+      "id": "unrealistic-durations",
       "execution_count": null,
       "outputs": []
     },
@@ -735,7 +755,7 @@
       "source": [
         "## Reliability Parameters\n"
       ],
-      "id": "a86888e5"
+      "id": "810074d8"
     },
     {
       "cell_type": "code",
@@ -759,7 +779,7 @@
         "\n",
         "## 2016\n"
       ],
-      "id": "b95c950e"
+      "id": "f8c2207c"
     },
     {
       "cell_type": "code",
@@ -767,7 +787,7 @@
       "source": [
         "pl_time_state[0].show()"
       ],
-      "id": "2d44ec2a",
+      "id": "edb7eaa1",
       "execution_count": null,
       "outputs": []
     },
@@ -777,7 +797,7 @@
       "source": [
         "## 2017\n"
       ],
-      "id": "6570c637"
+      "id": "1cb8866d"
     },
     {
       "cell_type": "code",
@@ -785,7 +805,7 @@
       "source": [
         "pl_time_state[1].show()"
       ],
-      "id": "04fd89a9",
+      "id": "06de0cc6",
       "execution_count": null,
       "outputs": []
     },
@@ -795,7 +815,7 @@
       "source": [
         "## 2018\n"
       ],
-      "id": "1929a281"
+      "id": "656967d6"
     },
     {
       "cell_type": "code",
@@ -803,7 +823,7 @@
       "source": [
         "pl_time_state[2].show()"
       ],
-      "id": "d429db28",
+      "id": "2e8154ec",
       "execution_count": null,
       "outputs": []
     },
@@ -813,7 +833,7 @@
       "source": [
         "## 2019\n"
       ],
-      "id": "2839a426"
+      "id": "fd48ee58"
     },
     {
       "cell_type": "code",
@@ -821,7 +841,7 @@
       "source": [
         "pl_time_state[3].show()"
       ],
-      "id": "4a1ac34b",
+      "id": "dff102dc",
       "execution_count": null,
       "outputs": []
     },
@@ -831,7 +851,7 @@
       "source": [
         "## 2020\n"
       ],
-      "id": "5795ed07"
+      "id": "26467726"
     },
     {
       "cell_type": "code",
@@ -839,7 +859,7 @@
       "source": [
         "pl_time_state[4].show()"
       ],
-      "id": "96cda60a",
+      "id": "c9d65d20",
       "execution_count": null,
       "outputs": []
     },
@@ -849,7 +869,7 @@
       "source": [
         "## 2021\n"
       ],
-      "id": "de5e87fd"
+      "id": "2bb0f2f2"
     },
     {
       "cell_type": "code",
@@ -857,7 +877,7 @@
       "source": [
         "pl_time_state[5].show()"
       ],
-      "id": "2cd21cd8",
+      "id": "079c1105",
       "execution_count": null,
       "outputs": []
     },
@@ -867,7 +887,7 @@
       "source": [
         "## 2022\n"
       ],
-      "id": "a2d68c0f"
+      "id": "fc55cdd2"
     },
     {
       "cell_type": "code",
@@ -875,7 +895,7 @@
       "source": [
         "pl_time_state[6].show()"
       ],
-      "id": "ceeb5d83",
+      "id": "a0a47b60",
       "execution_count": null,
       "outputs": []
     },
@@ -889,7 +909,7 @@
         "\n",
         "### Total\n"
       ],
-      "id": "13706098"
+      "id": "0cee4c72"
     },
     {
       "cell_type": "code",
@@ -897,8 +917,6 @@
       "source": [
         "#| label: failure-hist\n",
         "#| eval: true\n",
-        "\n",
-        "import plotly.express as px\n",
         "\n",
         "# Count the frequency of each Message\n",
         "message_counts = ttr.group_by(\"Message\").agg(\n",
@@ -940,7 +958,7 @@
       "source": [
         "### Per Wind Turbine\n"
       ],
-      "id": "aa1f20d6"
+      "id": "8cc004b7"
     },
     {
       "cell_type": "code",

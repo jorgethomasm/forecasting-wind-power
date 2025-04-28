@@ -38,6 +38,7 @@ library(fitdistrplus)
 library(truncdist)
 library(gt)
 library(patchwork)
+
 # library(paletteer)
 
 # conflict_prefer("select", "dplyr")
@@ -131,6 +132,7 @@ Years from 2017 and 2021 represents a cluster of the Senvion M92 wind turbines.
 relia_2017_2021 <- relia |> filter(Year != 2016 & Year != 2022)
 
 img <- cowplot::ggdraw() + cowplot::draw_image("./reports/online_assets/turbine-senvion_mm92.jpg")
+# img <- cowplot::ggdraw() + cowplot::draw_image("./online_assets/turbine-senvion_mm92.jpg")
 
 plt_boxplt_wt <- ggplot(relia_2017_2021,  aes(x = Turbine, y = `Failure Rate`)) + 
   geom_violin(alpha = 0.5, fill="grey", adjust=0.75, show.legend=FALSE) +
@@ -235,14 +237,11 @@ ttr_lnorm_fits <- lapply(split(ttr_2017_2021, ttr_2017_2021$Turbine), function(d
 
 # Extract lognormal parameters from ttr_lnorm_fits
 ttr_params <- lapply(names(ttr_lnorm_fits), function(turb) {
+  
   fit <- ttr_lnorm_fits[[turb]]
+
   dplyr::tibble(    
-    Turbine = turb,
-    meanlog = fit$estimate["meanlog"],
-    sdlog = fit$estimate["sdlog"]
-  )
-  }
-) |> bind_rows()
+    Turbine = turb, meanlog = fit$estimate["meanlog"], sdlog = fit$estimate["sdlog"])}) |> bind_rows()
 
 # Combine with frates_cte
 wt_sim_param <- frates_cte |>
@@ -289,37 +288,56 @@ tbl_sim_param <- gt(wt_sim_param) |>
 
 ### Components: Wind Turbines
 ```{r}
-#| label: run-simmc-all
+#| label: run-MCS-all-turbines
 #| eval: true
 
 #' Post: After selecting constant failure rates for the turbine and performing grid-search to fit the best PDFs 
 #' to repair-times (it's never exponential...) MC should be the way-to-go nowadays... 
 #' You can see the distribution for a fleet, i.e., the whole Wind Park!
 
-# Simulation
 sim_start_dt <- "2023-01-01 00"
-sim_res_list <- lapply(split(wt_sim_param, wt_sim_param$Turbine), function(params) {mcs_events(params, n_events=20000, dt_start=sim_start_dt, truncate_dist = FALSE)})
+sim_res_list <- lapply(split(wt_sim_param, wt_sim_param$Turbine), function(params) {mcs_events(params, n_events=15000, dt_start=sim_start_dt, truncate_dist = FALSE)})
 sim_events <- bind_rows(sim_res_list, .id = "Turbine")
 
-# PLOT convergence
+```
+
+```{r}
+#| label: Plot-MCS-FOR-Convergence
+#| true
+
 label_df <- sim_events |>
       filter(state == 0) |>
       group_by(Turbine) |>
       slice_tail(n = 1) |>
       ungroup()
 
+library(gganimate)
+plt_turbines_U_anim <- sim_events |> 
+  filter(state == 0) |>
+  mutate(year = lubridate::year(timestamp)) |>
+  ggplot(aes(x=timestamp, y=A_U*8760, color=Turbine)) +  
+  geom_line() +
+  geom_label(data=label_df, aes(label = round(A_U * 8760, 2), x = timestamp, y = A_U * 8760, color = Turbine), hjust = -0.2, vjust = 0.5, show.legend = FALSE) + 
+  scale_x_datetime(limits = c(min(sim_events$timestamp), max(sim_events$timestamp) + lubridate::years(100))) +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
+  labs(title="Monte Carlo Simulation - Six Senvion MM92 Wind Turbines", subtitle="Convergence of the Forced Outage Rate index per Turbine", x=paste("Years since", year(sim_events$timestamp[1])), y="FOR\n[h/yr.]", caption="1 Year = 8760 hours.") +
+  gganimate::transition_reveal(along = year) 
+
+gganimate::anim_save("./reports/online_assets/MCS_FOR_convergence.gif", animation = plt_turbines_U_anim)
+# gganimate::animate(plt_turbines_U_anim, renderer=ffmpeg_renderer("MCS_FOR_convergence.mp4"))
+
 plt_turbines_U <- sim_events |> 
   filter(state == 0) |>
   ggplot(aes(x=timestamp, y=A_U*8760, color=Turbine)) +  
   geom_line() +
   geom_label(data=label_df, aes(label = round(A_U * 8760, 2), x = timestamp, y = A_U * 8760, color = Turbine), hjust = -0.2, vjust = 0.5, show.legend = FALSE) + 
-  scale_x_datetime(limits = c(min(sim_events$timestamp), max(sim_events$timestamp) + lubridate::years(50))) +
+  scale_x_datetime(limits = c(min(sim_events$timestamp), max(sim_events$timestamp) + lubridate::years(100))) +
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
-  labs(title="Monte Carlo Simulation - Six Senvion MM92 Wind Turbines", subtitle="Convergence of the Forced Outage Rate index (FOR) per Turbine", x=paste("Years since", year(sim_events$timestamp[1])), y="FOR\n[h/yr.]", caption="1 Year = 8760 hours.")
-
+  labs(title="Monte Carlo Simulation - Six Senvion MM92 Wind Turbines", subtitle="Convergence of the Forced Outage Rate index per Turbine", x=paste("Years since", year(sim_events$timestamp[1])), y="FOR\n[h/yr.]", caption="1 Year = 8760 hours.")
+ 
 plt_turbines_U
-```
 
+```
 ```{r}
 #| label: sys-algo-debug
 #| eval: false
