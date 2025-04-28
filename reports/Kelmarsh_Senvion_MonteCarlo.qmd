@@ -374,6 +374,8 @@ time_grid_shortest <- seq(min(sim_events_trunc$timestamp), ceiling_date(min(max_
 states_shortest <- rep(NA, length.out = length(time_grid_shortest))
 time_grid_df_shortest <- tibble(timestamp = time_grid_shortest, system=states_shortest)
 
+# TODO: parallelise this function
+
 events_list <- lapply(split(sim_events_trunc, sim_events_trunc$Turbine), function(df) {  
   df |>
   dplyr::select(Turbine, timestamp, state) |>    
@@ -385,22 +387,25 @@ events_list <- lapply(split(sim_events_trunc, sim_events_trunc$Turbine), functio
   }
   )
 
-events <- bind_rows(events_list, .id = "Turbine")
-events$state.y <- NULL
+df_wide <- align_sim_events(sim_events_trunc)
+df_wide$total_MW <- df_wide$total *2.05
 
-events_wide <- events |>  
-  pivot_wider(
-    names_from = Turbine,
-    values_from = state) |>
-  arrange(timestamp)
+```
 
-events_wide_grid <- events_wide |> right_join(time_grid_df_shortest, by="timestamp")
 
-# events_wide_grid <- events_wide_grid |> mutate(system = rowSums(dplyr::select(starts_with("T"))), na.rm = TRUE)
-    
-events_wide_grid$system <-  rowSums(events_wide_grid[, 2:7], na.rm = FALSE, dims = 1)
-events_wide_grid$system_MW <- events_wide_grid$system *2.05
 
+```{r}
+#| label: test-statefun
+
+sim_events_trunc_T01 <- sim_events_trunc |> dplyr::select(Turbine, timestamp, state) |> filter(Turbine == "T01")
+event_times <- c(0, 344, 812, 1300)  # Times when turbine changes state
+states <- c(ifelse(first(sim_events_trunc_T01$state) == 0, 1, 0), sim_events_trunc_T01$state) 
+state_fun <- stepfun(sim_events_trunc_T01$timestamp, states)
+aligned_states_T01 <- state_fun(time_grid_shortest)
+
+df_test_T01 <- tibble(timestamp = time_grid_shortest, state=aligned_states_T01)
+
+df_test_T01_from_wide <- events_wide_grid |> dplyr::select(timestamp, T01) |> mutate(state = T01)  |> dplyr::select(-T01)
 ```
 
 ```{r}
@@ -409,7 +414,7 @@ events_wide_grid$system_MW <- events_wide_grid$system *2.05
 events_changes <- events_wide_grid |> filter(system != dplyr::lag(system) | is.na(dplyr::lag(system)))
 
 gen_capacity_curve <- ggplot(events_changes[5000:20000, ], aes(x = timestamp, y = system_MW)) + geom_step() +
-  labs(title = "Kelmarsh: Sytem Generation Capacity Curve", x = "Simulation Timeline", y = "Wind Farm\nCapacity\n[MW]") +
+  labs(title = "Kelmarsh: System Generation Capacity Curve", x = "Simulation Timeline", y = "Wind Farm\nCapacity\n[MW]") +
   scale_y_continuous(limits = c(0, 13), breaks = seq(0, 15, by = 2.05), minor_breaks=NULL) +
   # facet_grid(rows=Turbine) + 
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5))

@@ -283,6 +283,58 @@ mcs_events <- function(sim_parameters, n_events, dt_start, truncate_dist = FALSE
 }
 
 
+align_sim_events <- function(sim_events, grid_freq = "10 mins") {
+  # Check if the required parameters are provided
+  if (missing(sim_events)) {
+    stop("Please provide sim_events.")
+  }
+
+  # Check if sim_events is a data frame or tibble
+  if (!is.data.frame(sim_events)) {
+    stop("sim_events must be a data frame or tibble.")
+  }
+
+  # Count components
+  n_components <- length(unique(sim_events$Turbine))
+
+  # Generate time grid
+  max_min_timestamp <- sim_events |>
+    dplyr::group_by(Turbine) |>
+    dplyr::summarise(max_ts = max(timestamp)) |>
+    dplyr::arrange(max_ts)
+
+  time_grid <- seq(min(sim_events$timestamp),
+                   lubridate::ceiling_date(min(max_min_timestamp$max_ts),
+                                           unit = grid_freq),
+                   by = grid_freq)
+
+  # Align timestamps to the grid
+  events_list <- lapply(split(sim_events, sim_events$Turbine), function(df) {
+
+    df <-  df |> dplyr::select(Turbine, timestamp, state)
+    states <- c(ifelse(dplyr::first(df$state) == 0, 1, 0), df$state)
+    state_fun <- stepfun(df$timestamp, states)
+    evenly_spaced_states <- state_fun(time_grid)
+
+    dplyr::tibble(timestamp = time_grid, state = evenly_spaced_states)
+  }
+  )
+
+  events_df <- dplyr::bind_rows(events_list, .id = "Turbine")
+
+  events_df_wide <- events_df |>
+    tidyr::pivot_wider(names_from = Turbine, values_from = state) |>
+    dplyr::arrange(timestamp)
+
+  events_df_wide$total <- rowSums(events_df_wide[, 2:ncol(events_df_wide)],
+                                  na.rm = FALSE,
+                                  dims = 1)
+
+  # Return wide and aligned data frame
+  events_df_wide
+}
+
+
 # get mode function
 # df_all |>
 #   count(MasVnrType, name = "Count", sort = TRUE) |>
