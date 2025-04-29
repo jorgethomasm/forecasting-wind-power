@@ -38,9 +38,10 @@ library(fitdistrplus)
 library(truncdist)
 library(gt)
 library(patchwork)
+library(ggimage)
 
 # library(paletteer)
-
+options(future.globals.maxSize = 2 * 1024^3)
 # conflict_prefer("select", "dplyr")
 
 fpath_processed <- "../data/processed"
@@ -336,8 +337,8 @@ plt_turbines_U_anim <- sim_events |>
   labs(title="Monte Carlo Simulation - Six Senvion MM92 Wind Turbines", subtitle="Convergence of the Forced Outage Rate index per Turbine", x=paste("Years since", year(sim_events$timestamp[1])), y="FOR\n[h/yr.]", caption="1 Year = 8760 hours.") +
   gganimate::transition_reveal(along = year) 
 
-gganimate::anim_save("./reports/online_assets/MCS_FOR_convergence.gif", animation = plt_turbines_U_anim, dpi=320, width=800,  height=600, units="px")
-# gganimate::animate(plt_turbines_U_anim, renderer=ffmpeg_renderer("MCS_FOR_convergence.mp4"))
+# gganimate::anim_save("./reports/online_assets/MCS_FOR_convergence.gif", animation = plt_turbines_U_anim, dpi=320, width=800,  height=600, units="px")
+
 
 ```
 
@@ -349,42 +350,13 @@ gganimate::anim_save("./reports/online_assets/MCS_FOR_convergence.gif", animatio
 sim_res_trunc <- lapply(split(wt_sim_param, wt_sim_param$Turbine), function(params) {mcs_events(params, n_events=20000, dt_start=sim_start_dt, truncate_dist = TRUE)})
 sim_events_trunc <- bind_rows(sim_res_trunc, .id = "Turbine")
 
-# 1) generate hourly time vector-> dt_start - max(datetime) per turbine (select min)
-
-max_min_timestamp <- sim_events_trunc |> group_by(Turbine) |> summarise(max_ts = max(timestamp)) |> arrange(max_ts) 
-#print(max_min_timestamp)
-
-time_grid_longest <- seq(min(sim_events_trunc$timestamp), ceiling_date(max(sim_events_trunc$timestamp), "10 mins"), by = "10 mins")
-states_longest <- rep(NA, length.out = length(time_grid_longest))
-time_grid_df_longest <- tibble(timestamp = time_grid_longest, state=states_longest)
-
-time_grid_shortest <- seq(min(sim_events_trunc$timestamp), ceiling_date(min(max_min_timestamp$max_ts), "10 mins"), by = "10 mins")
-states_shortest <- rep(NA, length.out = length(time_grid_shortest))
-time_grid_df_shortest <- tibble(timestamp = time_grid_shortest, system=states_shortest)
-
-# TODO: parallelise this function
-
-events_list <- lapply(split(sim_events_trunc, sim_events_trunc$Turbine), function(df) {  
-  df |>
-  dplyr::select(Turbine, timestamp, state) |>    
-  full_join(time_grid_df_longest, by="timestamp") |> 
-  arrange(timestamp) |>
-  tidyr::fill(state.x, .direction = "down") |>
-  tidyr::fill(Turbine, .direction = "down") |>    
-  rename(state = state.x)  
-  }
-  )
-
-options(future.globals.maxSize = 2 * 1024^3)
 events_wide_grid <- align_sim_events(sim_events_trunc)
-events_wide_grid$total_MW <- events_wide_grid$total *2.05
-
 events_wide_grid_MW <- events_wide_grid |> mutate(across(-timestamp, ~ .x * 2.05))
 
 ```
 
 ```{r}
-#| label: sys-gen-capacity-curve
+#| label: events-change
 
 events_changes <- events_wide_grid_MW |>
   filter(total != dplyr::lag(total) | is.na(dplyr::lag(total))) |>
@@ -392,10 +364,15 @@ events_changes <- events_wide_grid_MW |>
 
 events_changes_zoom <- events_changes[5200:5220, ] |>
   pivot_longer(cols = -timestamp, names_to = "Turbine", values_to = "MW") |>
-   mutate(Turbine = factor(Turbine, levels = c(setdiff(unique(Turbine), "Kelmarsh"), "Kelmarsh")))
+   mutate(Turbine = factor(Turbine, levels = c(setdiff(unique(Turbine), "Kelmarsh"), "Kelmarsh"))) |>
+   arrange(Turbine, timestamp)
 
+```
 
-library(ggimage)
+```{r}
+#| label: gen-capacity-curve
+#| eval: true
+
 # Get the first six turbines (excluding "Kelmarsh" if present)
 turbine_names <- levels(events_changes_zoom$Turbine)
 turbine_names <- turbine_names[turbine_names != "Kelmarsh"][1:6]
@@ -409,28 +386,6 @@ icon_df <- events_changes_zoom |>
   ) |>
   mutate(image = "./reports/online_assets/wind-turbine-icon-10.jpg") |>
   mutate(MW = 1.2)
-
-
-gen_capacity_curve <- ggplot(events_changes_zoom, aes(x = timestamp, y = MW)) + geom_step() +
-facet_grid(Turbine ~ ., scales = "free_y") +
-ggimage::geom_image(
-    data = icon_df,
-    aes(image = image),
-    size = 1, # Adjust size as needed
-    by = "width"
-  ) +
-  labs(title = "Kelmarsh: System Generation Capacity Curve", x = "Simulation Timeline", y = "Wind Farm\nCapacity\n[MW]") +  
-  # scale_y_continuous(labels = scales::number_format(accuracy = 0.01)) + # no decimals
-  # scale_y_continuous(limits = c(0, 13), breaks = seq(0, 15, by = 2.05), minor_breaks=NULL) +  
-  scale_y_continuous(minor_breaks=NULL) +    
-  theme(axis.title.y = element_text(angle = 0, vjust = 0.05))
-
-gen_capacity_curve
-
-```
-
-
-```{r}
 
 # First 6 turbines (fixed y scale)
 plot_fixed <- events_changes_zoom |>
@@ -466,7 +421,7 @@ plot_free <- events_changes_zoom |>
 gen_capacity_curve <- plot_fixed / plot_free
 gen_capacity_curve
 
-ggsave(filename = "./reports/online_assets/gen_capacity_curve.png", plot = gen_capacity_curve, dpi = 320, width = 800, height = 800, units = "px")
+ggsave(filename = "./reports/online_assets/gen_capacity_curve.png", plot = gen_capacity_curve, width = 800, height = 600, units = "px")
 
 ```
 
